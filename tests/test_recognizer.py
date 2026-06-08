@@ -14,10 +14,7 @@ def test_recognizer_rejects_impossible_stability_config():
 
 
 def test_classifier_predict_accepts_landmark_dictionaries():
-    landmarks = [
-        {"x": index * 0.01, "y": index * -0.02, "z": 0.0}
-        for index in range(21)
-    ]
+    landmarks = [{"x": index * 0.01, "y": index * -0.02, "z": 0.0} for index in range(21)]
 
     prediction = OKHandClassifier().predict(landmarks, "Left")
 

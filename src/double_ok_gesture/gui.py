@@ -3,15 +3,14 @@
 from __future__ import annotations
 
 import argparse
-from collections import Counter
 import csv
-from dataclasses import asdict, dataclass
 import html
 import json
+import webbrowser
+from collections import Counter
+from dataclasses import asdict, dataclass
 from pathlib import Path
 from string import Template
-import webbrowser
-
 
 DEFAULT_CONFIG_PATH = Path("configs/default.json")
 DEFAULT_CSV_PATH = Path("data/processed/hagrid_ok_features.csv")
@@ -173,11 +172,11 @@ def render_dashboard(summary: DashboardSummary) -> str:
         ("中心 X", f"{gate_config.get('center_x_min', '?')} - {gate_config.get('center_x_max', '?')}"),
         ("中心 Y", f"{gate_config.get('center_y_min', '?')} - {gate_config.get('center_y_max', '?')}"),
         ("双手距离", gate_config.get("min_hand_separation", "未配置")),
+        ("目标手势", "稳定双 OK" if gate_config.get("require_double_ok", True) else "仅几何门控"),
         ("眼镜姿态", "需要" if gate_config.get("require_glasses_pose") else "默认不需要"),
     ]
     config_html = "\n".join(
-        f"<tr><th>{html.escape(str(name))}</th><td>{html.escape(str(value))}</td></tr>"
-        for name, value in config_rows
+        f"<tr><th>{html.escape(str(name))}</th><td>{html.escape(str(value))}</td></tr>" for name, value in config_rows
     )
 
     split_html = _bar_rows(summary.csv.split_counts, summary.csv.row_count)
@@ -228,10 +227,7 @@ def _bar_rows(counts: dict[str, int], total: int) -> str:
 
 def _safe_json_for_script(value: object) -> str:
     return (
-        json.dumps(value, ensure_ascii=False)
-        .replace("<", "\\u003c")
-        .replace(">", "\\u003e")
-        .replace("&", "\\u0026")
+        json.dumps(value, ensure_ascii=False).replace("<", "\\u003c").replace(">", "\\u003e").replace("&", "\\u0026")
     )
 
 

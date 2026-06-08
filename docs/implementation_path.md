@@ -108,7 +108,7 @@ python -m double_ok_gesture.evaluate \
 
 ```bash
 python -m double_ok_gesture.demo \
-  --camera 0 \
+  --camera /dev/video0 \
   --model models/ok_hand_numpy_logreg.pkl \
   --capture-gate
 ```
@@ -128,11 +128,12 @@ python -m double_ok_gesture.demo \
 如果实机误判高，再采集本地眼镜视角样本：
 
 ```bash
-python -m double_ok_gesture.capture_samples --label double_ok --gate --auto-capture
-python -m double_ok_gesture.capture_samples --label not_double_ok --gate
+python -m double_ok_gesture.capture_samples --label double_ok --gate --auto-capture --camera /dev/video0
+python -m double_ok_gesture.capture_samples --label not_double_ok --gate --camera /dev/video0
 ```
 
-本地数据用于调阈值或二次训练，不替代 HaGRID 初始训练。
+正样本门控要求稳定双 OK；负样本门控要求入框、居中、分开且当前不是双 OK。本地数据用于调阈值
+或二次训练，不替代 HaGRID 初始训练。
 
 ## 历史数据产物
 

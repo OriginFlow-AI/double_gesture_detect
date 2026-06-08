@@ -6,6 +6,7 @@ from double_ok_gesture.capture_gate import (
     GateReason,
     GlassesPose,
     evaluate_capture_gate,
+    evaluate_labeled_capture_gate,
     evaluate_stereo_capture_gate,
     load_glasses_pose,
 )
@@ -79,6 +80,26 @@ def test_gate_blocks_until_double_ok_is_stable():
 
     assert not decision.ready
     assert decision.reason == GateReason.NEED_DOUBLE_OK
+
+
+def test_negative_capture_gate_accepts_centered_non_double_ok():
+    result = make_result(make_hand(0.4, 0.5), make_hand(0.6, 0.5, is_ok=False))
+
+    decision = evaluate_labeled_capture_gate(result, "not_double_ok")
+
+    assert decision.ready
+    assert decision.reason == GateReason.READY
+    assert decision.gesture_ok
+
+
+def test_negative_capture_gate_rejects_double_ok():
+    result = make_result(make_hand(0.4, 0.5), make_hand(0.6, 0.5))
+
+    decision = evaluate_labeled_capture_gate(result, "not_double_ok")
+
+    assert not decision.ready
+    assert decision.reason == GateReason.AVOID_DOUBLE_OK
+    assert not decision.gesture_ok
 
 
 def test_stereo_gate_left_mode_uses_left_view_only():

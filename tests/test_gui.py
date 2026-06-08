@@ -42,8 +42,7 @@ def test_collect_dashboard_summary_scans_feature_csv(tmp_path):
 def test_write_dashboard_outputs_html(tmp_path):
     csv_path = tmp_path / "features.csv"
     csv_path.write_text(
-        "split,source_json,image_id,gesture_label,target,handedness,lm_0_x\n"
-        "train,ok.json,1,ok,1,Left,0.1\n",
+        "split,source_json,image_id,gesture_label,target,handedness,lm_0_x\ntrain,ok.json,1,ok,1,Left,0.1\n",
         encoding="utf-8",
     )
     config_path = tmp_path / "config.json"
@@ -69,8 +68,7 @@ def test_write_dashboard_outputs_html(tmp_path):
 def test_render_dashboard_escapes_template_literals(tmp_path):
     csv_path = tmp_path / "features.csv"
     csv_path.write_text(
-        "split,source_json,image_id,gesture_label,target,handedness,lm_0_x\n"
-        "train,ok.json,1,ok,1,Left,0.1\n",
+        "split,source_json,image_id,gesture_label,target,handedness,lm_0_x\ntrain,ok.json,1,ok,1,Left,0.1\n",
         encoding="utf-8",
     )
     config_path = tmp_path / "config.json"

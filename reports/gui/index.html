@@ -386,6 +386,7 @@
 <tr><th>中心 X</th><td>0.2 - 0.8</td></tr>
 <tr><th>中心 Y</th><td>0.18 - 0.82</td></tr>
 <tr><th>双手距离</th><td>0.16</td></tr>
+<tr><th>目标手势</th><td>稳定双 OK</td></tr>
 <tr><th>眼镜姿态</th><td>默认不需要</td></tr></table>
         </div>
       </section>
@@ -532,7 +533,7 @@
     </main>
   </div>
   <script>
-    const DASHBOARD = {"config_path": "configs/default.json", "config": {"max_num_hands": 2, "ok_threshold": 0.68, "stable_window": 5, "stable_min_positive": 3, "min_detection_confidence": 0.55, "min_tracking_confidence": 0.55, "capture_gate": {"require_glasses_pose": false, "pitch_min": -20.0, "pitch_max": 20.0, "roll_min": -12.0, "roll_max": 12.0, "yaw_min": -25.0, "yaw_max": 25.0, "frame_margin": 0.03, "center_x_min": 0.2, "center_x_max": 0.8, "center_y_min": 0.18, "center_y_max": 0.82, "min_hand_separation": 0.16, "use_stable_double_ok": true}}, "csv": {"file": {"path": "data/processed/hagrid_ok_features.csv", "exists": true, "size_bytes": 491506652, "size_label": "468.7 MB"}, "row_count": 303697, "positive_count": 31041, "negative_count": 272656, "feature_count": 96, "column_count": 102, "split_counts": {"train": 169945, "test": 130756, "val": 2996}, "gesture_counts": {"ok": 31041, "palm": 11977, "stop": 11948, "three2": 11948, "four": 11940, "three": 11906, "call": 11892, "one": 11886, "peace_inverted": 11885, "rock": 11882, "two_up": 11880, "stop_inverted": 11870}}, "model": {"path": "models/ok_hand_numpy_logreg.pkl", "exists": true, "size_bytes": 2743, "size_label": "2.7 KB"}};
+    const DASHBOARD = {"config_path": "configs/default.json", "config": {"max_num_hands": 2, "ok_threshold": 0.68, "stable_window": 5, "stable_min_positive": 3, "min_detection_confidence": 0.55, "min_tracking_confidence": 0.55, "capture_gate": {"require_glasses_pose": false, "pitch_min": -20.0, "pitch_max": 20.0, "roll_min": -12.0, "roll_max": 12.0, "yaw_min": -25.0, "yaw_max": 25.0, "frame_margin": 0.03, "center_x_min": 0.2, "center_x_max": 0.8, "center_y_min": 0.18, "center_y_max": 0.82, "min_hand_separation": 0.16, "use_stable_double_ok": true, "require_double_ok": true}}, "csv": {"file": {"path": "data/processed/hagrid_ok_features.csv", "exists": true, "size_bytes": 491506652, "size_label": "468.7 MB"}, "row_count": 303697, "positive_count": 31041, "negative_count": 272656, "feature_count": 96, "column_count": 102, "split_counts": {"train": 169945, "test": 130756, "val": 2996}, "gesture_counts": {"ok": 31041, "palm": 11977, "stop": 11948, "three2": 11948, "four": 11940, "three": 11906, "call": 11892, "one": 11886, "peace_inverted": 11885, "rock": 11882, "two_up": 11880, "stop_inverted": 11870}}, "model": {"path": "models/ok_hand_numpy_logreg.pkl", "exists": true, "size_bytes": 2743, "size_label": "2.7 KB"}};
     const cfg = DASHBOARD.config || {};
     const gateCfg = cfg.capture_gate || {};
     const promptMap = {

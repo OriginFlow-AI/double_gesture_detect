@@ -8,6 +8,7 @@ if [[ -z "$PYTHON_BIN" && -x .venv/bin/python ]]; then
 fi
 PYTHON_BIN="${PYTHON_BIN:-python}"
 
-PYTHONPATH=src "$PYTHON_BIN" -m ruff check src tests
-PYTHONPATH=src "$PYTHON_BIN" -m ruff format --check src tests
-PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTHONPATH=src "$PYTHON_BIN" -m pytest -q
+PYTHONPATH=src "$PYTHON_BIN" -m double_ok_gesture.camera \
+  --list \
+  --probe \
+  --camera "${1:-/dev/video0}"

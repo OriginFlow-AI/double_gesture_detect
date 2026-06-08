@@ -2,14 +2,14 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from enum import Enum
 import json
 import math
-from pathlib import Path
 import shutil
 import subprocess
 import time
+from dataclasses import dataclass, replace
+from enum import Enum
+from pathlib import Path
 from typing import Any
 
 import numpy as np
@@ -26,6 +26,7 @@ class GateReason(str, Enum):
     HANDS_NOT_CENTERED = "hands_not_centered"
     HANDS_TOO_CLOSE = "hands_too_close"
     NEED_DOUBLE_OK = "need_double_ok"
+    AVOID_DOUBLE_OK = "avoid_double_ok"
 
 
 class StereoGateMode(str, Enum):
@@ -60,6 +61,7 @@ class CaptureGateConfig:
     center_y_max: float = 0.82
     min_hand_separation: float = 0.16
     use_stable_double_ok: bool = True
+    require_double_ok: bool = True
 
     def __post_init__(self) -> None:
         _validate_range("pitch", self.pitch_min, self.pitch_max)
@@ -71,6 +73,10 @@ class CaptureGateConfig:
             raise ValueError("frame_margin must be finite and in [0.0, 0.5)")
         if not math.isfinite(self.min_hand_separation) or self.min_hand_separation < 0.0:
             raise ValueError("min_hand_separation must be finite and non-negative")
+        if not isinstance(self.use_stable_double_ok, bool):
+            raise ValueError("use_stable_double_ok must be a boolean")
+        if not isinstance(self.require_double_ok, bool):
+            raise ValueError("require_double_ok must be a boolean")
 
 
 @dataclass(frozen=True)
@@ -83,6 +89,7 @@ class CaptureGateDecision:
     hands_visible: bool
     hands_separated: bool
     double_ok: bool
+    gesture_ok: bool
     hand_count: int
 
 
@@ -104,6 +111,7 @@ PROMPTS = {
     GateReason.HANDS_NOT_CENTERED: "请把双手移到画面中心",
     GateReason.HANDS_TOO_CLOSE: "请将双手分开一些",
     GateReason.NEED_DOUBLE_OK: "请双手分开并做出 OK 手势",
+    GateReason.AVOID_DOUBLE_OK: "负样本采集中，请不要同时做双手 OK",
 }
 
 OVERLAY_LABELS = {
@@ -115,6 +123,7 @@ OVERLAY_LABELS = {
     GateReason.HANDS_NOT_CENTERED: "MOVE_HANDS_TO_CENTER",
     GateReason.HANDS_TOO_CLOSE: "SEPARATE_HANDS",
     GateReason.NEED_DOUBLE_OK: "MAKE_DOUBLE_OK",
+    GateReason.AVOID_DOUBLE_OK: "AVOID_DOUBLE_OK",
 }
 
 
@@ -229,7 +238,7 @@ def evaluate_capture_gate(
             hand_count,
         )
 
-    if not double_ok:
+    if cfg.require_double_ok and not double_ok:
         return _decision(
             GateReason.NEED_DOUBLE_OK,
             cfg,
@@ -251,6 +260,39 @@ def evaluate_capture_gate(
         double_ok,
         hand_count,
     )
+
+
+def evaluate_labeled_capture_gate(
+    result: DoubleOKResult,
+    label: str,
+    config: CaptureGateConfig | None = None,
+    glasses_pose: GlassesPose | None = None,
+) -> CaptureGateDecision:
+    """Evaluate geometry plus the gesture condition required by a sample label."""
+
+    cfg = config or CaptureGateConfig()
+    if label == "double_ok":
+        return evaluate_capture_gate(result, cfg, glasses_pose)
+    if label != "not_double_ok":
+        raise ValueError(f"Unsupported capture label: {label}")
+
+    geometry_cfg = replace(cfg, require_double_ok=False)
+    geometry_decision = evaluate_capture_gate(result, geometry_cfg, glasses_pose)
+    if not geometry_decision.ready:
+        return replace(geometry_decision, gesture_ok=not result.double_ok)
+
+    common = (
+        geometry_cfg,
+        geometry_decision.glasses_pose_ok,
+        geometry_decision.hands_centered,
+        geometry_decision.hands_visible,
+        geometry_decision.hands_separated,
+        result.double_ok,
+        geometry_decision.hand_count,
+    )
+    if result.double_ok:
+        return _decision(GateReason.AVOID_DOUBLE_OK, *common, gesture_ok=False)
+    return _decision(GateReason.READY, *common, gesture_ok=True)
 
 
 def evaluate_stereo_capture_gate(
@@ -352,6 +394,25 @@ def draw_gate_overlay(frame_bgr: np.ndarray, decision: CaptureGateDecision, conf
     color = (40, 200, 40) if decision.ready else (40, 160, 255)
     cv2.rectangle(frame_bgr, (x1, y1), (x2, y2), color, 2)
     cv2.putText(frame_bgr, OVERLAY_LABELS[decision.reason], (24, 82), cv2.FONT_HERSHEY_SIMPLEX, 0.75, color, 2)
+    checks = [
+        ("POSE", decision.glasses_pose_ok),
+        ("VISIBLE", decision.hands_visible),
+        ("CENTER", decision.hands_centered),
+        ("SEPARATE", decision.hands_separated),
+        ("GESTURE", decision.gesture_ok),
+    ]
+    for index, (name, passed) in enumerate(checks):
+        check_color = (40, 200, 40) if passed else (40, 160, 255)
+        marker = "OK" if passed else "--"
+        cv2.putText(
+            frame_bgr,
+            f"{name}:{marker}",
+            (24, 112 + index * 24),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.52,
+            check_color,
+            1,
+        )
 
 
 def _check_glasses_pose(
@@ -383,7 +444,11 @@ def _decision(
     hands_separated: bool,
     double_ok: bool,
     hand_count: int,
+    *,
+    gesture_ok: bool | None = None,
 ) -> CaptureGateDecision:
+    if gesture_ok is None:
+        gesture_ok = double_ok if _config.require_double_ok else True
     return CaptureGateDecision(
         ready=reason == GateReason.READY,
         reason=reason,
@@ -393,6 +458,7 @@ def _decision(
         hands_visible=hands_visible,
         hands_separated=hands_separated,
         double_ok=double_ok,
+        gesture_ok=gesture_ok,
         hand_count=hand_count,
     )
 

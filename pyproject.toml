@@ -19,6 +19,7 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
   "pytest>=7.4",
+  "ruff>=0.11,<1",
 ]
 
 [project.scripts]
@@ -27,6 +28,7 @@ double-ok-prepare-hagrid = "double_ok_gesture.prepare_hagrid:main"
 double-ok-train = "double_ok_gesture.train:main"
 double-ok-eval = "double_ok_gesture.evaluate:main"
 double-ok-capture = "double_ok_gesture.capture_samples:main"
+double-ok-camera-check = "double_ok_gesture.camera:main"
 double-ok-gui = "double_ok_gesture.gui:main"
 
 [tool.setuptools.packages.find]
@@ -39,3 +41,10 @@ addopts = [
   "-p", "no:launch_testing",
   "-p", "no:launch_ros",
 ]
+
+[tool.ruff]
+target-version = "py310"
+line-length = 119
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F", "I", "B"]

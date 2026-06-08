@@ -62,6 +62,10 @@ python -m double_ok_gesture.evaluate \
   --split auto
 ```
 
+Training uses `val` only when it contains both classes. Otherwise it creates a
+stratified holdout from `train`. The independent `test` split remains untouched
+until `double_ok_gesture.evaluate`.
+
 `--split auto` prefers the independent test split, then val. Use `--split all`
 only when intentionally inspecting the complete dataset.
 
@@ -89,8 +93,10 @@ you later switch from landmark features to an image detector/classifier.
 Capture a small local validation set after training:
 
 ```bash
-python -m double_ok_gesture.capture_samples --label double_ok
-python -m double_ok_gesture.capture_samples --label not_double_ok
+python -m double_ok_gesture.capture_samples --label double_ok --gate --camera /dev/video0
+python -m double_ok_gesture.capture_samples --label not_double_ok --gate --camera /dev/video0
 ```
 
-Use those images to check lighting, camera angle, distance, and false triggers.
+The positive gate requires stable double OK. The negative gate requires valid
+framing and spacing while rejecting double OK, preventing positive frames from
+being written into the negative directory.

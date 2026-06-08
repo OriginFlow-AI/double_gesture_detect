@@ -20,9 +20,7 @@ def load_feature_csv(
     with csv_path.open("r", newline="", encoding="utf-8") as file:
         reader = csv.DictReader(file)
         fieldnames = reader.fieldnames or []
-        feature_columns = [
-            name for name in fieldnames if name.startswith(("lm_", "geom_"))
-        ]
+        feature_columns = [name for name in fieldnames if name.startswith(("lm_", "geom_"))]
         if not feature_columns:
             raise ValueError(f"No feature columns found in {csv_path}")
         if "target" not in fieldnames:
@@ -64,8 +62,8 @@ def make_model(model_type: str, max_iter: int, random_state: int):
         return NumpyLogisticClassifier(max_iter=max_iter)
 
     try:
-        from sklearn.neural_network import MLPClassifier
         from sklearn.linear_model import LogisticRegression
+        from sklearn.neural_network import MLPClassifier
         from sklearn.pipeline import Pipeline
         from sklearn.preprocessing import StandardScaler
     except ModuleNotFoundError as exc:
@@ -96,10 +94,30 @@ def make_model(model_type: str, max_iter: int, random_state: int):
 
 def split_data(x: np.ndarray, y: np.ndarray, splits: np.ndarray, random_state: int):
     train_mask = splits == "train"
-    for holdout_name in ("test", "val"):
-        holdout_mask = splits == holdout_name
-        if train_mask.any() and holdout_mask.any():
-            return x[train_mask], x[holdout_mask], y[train_mask], y[holdout_mask]
+    validation_mask = splits == "val"
+    if (
+        train_mask.any()
+        and validation_mask.any()
+        and _contains_both_binary_labels(y[train_mask])
+        and _contains_both_binary_labels(y[validation_mask])
+    ):
+        return x[train_mask], x[validation_mask], y[train_mask], y[validation_mask]
+
+    # A missing or single-class validation split is not useful. Build a
+    # stratified holdout from train and leave the independent test split alone.
+    if train_mask.any():
+        train_x = x[train_mask]
+        train_y = y[train_mask]
+        train_indices, validation_indices = _stratified_split_indices(
+            train_y,
+            random_state,
+        )
+        return (
+            train_x[train_indices],
+            train_x[validation_indices],
+            train_y[train_indices],
+            train_y[validation_indices],
+        )
 
     train_indices, test_indices = _stratified_split_indices(y, random_state)
     return x[train_indices], x[test_indices], y[train_indices], y[test_indices]
@@ -111,7 +129,7 @@ def confusion_matrix_2x2(y_true: np.ndarray, y_pred: np.ndarray) -> np.ndarray:
     if not np.isin(y_true, [0, 1]).all() or not np.isin(y_pred, [0, 1]).all():
         raise ValueError("confusion_matrix_2x2 only supports binary labels 0 and 1")
     matrix = np.zeros((2, 2), dtype=np.int64)
-    for true, pred in zip(y_true, y_pred):
+    for true, pred in zip(y_true, y_pred, strict=True):
         matrix[int(true), int(pred)] += 1
     return matrix
 
@@ -171,6 +189,10 @@ def main() -> None:
 
 def _has_values(row: dict[str | None, Any]) -> bool:
     return any(value not in (None, "") for value in row.values())
+
+
+def _contains_both_binary_labels(y: np.ndarray) -> bool:
+    return set(np.unique(y)) == {0, 1}
 
 
 def _stratified_split_indices(

@@ -51,21 +51,36 @@ gui.py             静态 HTML 状态报告
 
 ## 实时运行
 
-单目：
+先确认 Orbbec 设备可以打开：
+
+```bash
+scripts/check_camera.sh /dev/video0
+```
+
+使用 Orbbec Gemini 335 单目彩色流：
+
+```bash
+scripts/run_demo.sh /dev/video0
+```
+
+实时窗口显示手部框、21 点、左右手 OK 分数、门控检查项、FPS、处理延迟和实际分辨率。按
+`Q` 或 `Esc` 退出。设备刚接入尚未就绪时会自动重试；连续读帧失败会明确报错。
+
+直接运行 Python 入口：
 
 ```bash
 python -m double_ok_gesture.demo \
-  --camera 0 \
+  --camera /dev/video0 \
   --model models/ok_hand_numpy_logreg.pkl \
   --capture-gate
 ```
 
-双目，以左眼作为门控基准：
+双目设备，以左眼作为门控基准：
 
 ```bash
 python -m double_ok_gesture.demo \
-  --left-camera 0 \
-  --right-camera 1 \
+  --left-camera /dev/video-left \
+  --right-camera /dev/video-right \
   --model models/ok_hand_numpy_logreg.pkl \
   --capture-gate \
   --stereo-gate left
@@ -75,12 +90,15 @@ python -m double_ok_gesture.demo \
 
 ```bash
 python -m double_ok_gesture.demo \
-  --left-camera 0 \
-  --right-camera 1 \
+  --left-camera /dev/video-left \
+  --right-camera /dev/video-right \
   --model models/ok_hand_numpy_logreg.pkl \
   --capture-gate \
   --stereo-gate both
 ```
+
+不要把 V4L2 metadata 节点当作图像流；可先用 `--list-cameras` 或
+`scripts/check_camera.sh` 检查。生产部署建议通过 udev 为左右相机建立稳定设备别名。
 
 显式传入的模型文件不存在或特征结构不兼容时，程序会立即报错，不会静默切换分类策略。不传 `--model` 时才使用几何规则。
 
@@ -96,7 +114,7 @@ GLASSES 端可持续写入包含完整角度的 JSON 文件：
 
 ```bash
 python -m double_ok_gesture.demo \
-  --camera 0 \
+  --camera /dev/video0 \
   --capture-gate \
   --require-glasses-pose \
   --glasses-pose /path/to/glasses_pose.json
@@ -118,6 +136,9 @@ scripts/evaluate_numpy_logreg.sh
 python -m double_ok_gesture.evaluate --split auto
 ```
 
+训练阶段仅在 `val` 同时包含正负类时使用它；否则从 `train` 内部分层留出验证集。独立 `test`
+始终只由评估命令使用。
+
 模型使用 joblib/pickle 格式，只能加载本项目生成或其他可信来源的文件；这类格式在反序列化时可以执行代码。
 
 ## 本地采集
@@ -128,7 +149,7 @@ python -m double_ok_gesture.evaluate --split auto
 python -m double_ok_gesture.capture_samples \
   --label double_ok \
   --gate \
-  --camera 0
+  --camera /dev/video0
 ```
 
 满足条件后自动采集：
@@ -138,7 +159,16 @@ python -m double_ok_gesture.capture_samples \
   --label double_ok \
   --gate \
   --auto-capture \
-  --camera 0
+  --camera /dev/video0
+```
+
+采集负样本时，门控要求双手完整、居中并保持间距，同时明确阻止双手 OK，避免标签污染：
+
+```bash
+python -m double_ok_gesture.capture_samples \
+  --label not_double_ok \
+  --gate \
+  --camera /dev/video0
 ```
 
 ## 测试与报告
@@ -148,6 +178,8 @@ scripts/test.sh
 scripts/gui_report.sh
 ```
 
-`scripts/test.sh` 会隔离机器上与本项目无关的 pytest 插件。GUI 报告输出到 `reports/gui/index.html`。
+`scripts/test.sh` 会隔离机器上与本项目无关的 pytest 插件。静态数据与门控模拟报告输出到
+`reports/gui/index.html`；实时测试界面由 `scripts/run_demo.sh` 启动。
 
-所有阈值集中在 `configs/default.json`。更详细的数据与实现说明见 `docs/`。
+所有识别与门控阈值集中在 `configs/default.json`。生产审计、验收与遗留风险见
+`docs/production_readiness.md`。

@@ -18,6 +18,7 @@ class NumpyLogisticClassifier:
     def fit(self, x: np.ndarray, y: np.ndarray) -> "NumpyLogisticClassifier":
         x = np.asarray(x, dtype=np.float32)
         y = np.asarray(y, dtype=np.float32)
+        _validate_training_data(x, y)
         self.classes_ = np.asarray([0, 1], dtype=np.int64)
         self.mean_ = x.mean(axis=0)
         self.scale_ = x.std(axis=0)
@@ -45,6 +46,12 @@ class NumpyLogisticClassifier:
 
     def predict_proba(self, x: np.ndarray) -> np.ndarray:
         x = np.asarray(x, dtype=np.float32)
+        if not hasattr(self, "coef_"):
+            raise RuntimeError("Classifier must be fitted before prediction")
+        if x.ndim != 2 or x.shape[1] != self.coef_.shape[0]:
+            raise ValueError(f"Expected prediction data with shape (n, {self.coef_.shape[0]}), got {x.shape}")
+        if not np.isfinite(x).all():
+            raise ValueError("Prediction features must be finite")
         x_scaled = (x - self.mean_) / self.scale_
         positive = _sigmoid(x_scaled @ self.coef_ + self.intercept_)
         return np.column_stack([1.0 - positive, positive])
@@ -56,3 +63,14 @@ class NumpyLogisticClassifier:
 def _sigmoid(values: np.ndarray) -> np.ndarray:
     values = np.clip(values, -40.0, 40.0)
     return 1.0 / (1.0 + np.exp(-values))
+
+
+def _validate_training_data(x: np.ndarray, y: np.ndarray) -> None:
+    if x.ndim != 2 or x.shape[0] < 2 or x.shape[1] < 1:
+        raise ValueError("Training features must have shape (n >= 2, features >= 1)")
+    if y.ndim != 1 or len(y) != len(x):
+        raise ValueError("Training targets must be one-dimensional and match feature rows")
+    if not np.isfinite(x).all() or not np.isfinite(y).all():
+        raise ValueError("Training data must contain only finite values")
+    if set(np.unique(y)) != {0.0, 1.0}:
+        raise ValueError("Training targets must contain both binary labels 0 and 1")

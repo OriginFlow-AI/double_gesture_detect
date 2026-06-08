@@ -19,6 +19,7 @@
     "center_y_min": 0.18,
     "center_y_max": 0.82,
     "min_hand_separation": 0.16,
-    "use_stable_double_ok": true
+    "use_stable_double_ok": true,
+    "require_double_ok": true
   }
 }

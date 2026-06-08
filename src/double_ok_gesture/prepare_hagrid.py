@@ -5,11 +5,10 @@ from __future__ import annotations
 import argparse
 import csv
 import json
-from pathlib import Path
 import sys
+from pathlib import Path
 
 from .features import feature_names, feature_vector
-
 
 DEFAULT_NEGATIVE_LABELS = {
     "call",
@@ -175,7 +174,7 @@ def build_csv(args: argparse.Namespace) -> int:
                     "target": sample["target"],
                     "handedness": sample["handedness"],
                 }
-                row.update({name: float(value) for name, value in zip(names, vector)})
+                row.update({name: float(value) for name, value in zip(names, vector, strict=True)})
                 writer.writerow(row)
                 rows_written += 1
         temporary_output.replace(output)

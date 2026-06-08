@@ -8,7 +8,6 @@ from typing import Any
 
 from .capture_gate import CaptureGateConfig
 
-
 RECOGNIZER_CONFIG_KEYS = frozenset(
     {
         "max_num_hands",
