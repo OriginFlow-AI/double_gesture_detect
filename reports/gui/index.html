@@ -1,0 +1,622 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Double OK Gesture GUI</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f6f7f9;
+      --panel: #ffffff;
+      --panel-2: #eef2f6;
+      --ink: #1a1f2b;
+      --muted: #667085;
+      --line: #d7dde6;
+      --accent: #177a68;
+      --accent-2: #2f6fed;
+      --warn: #b76313;
+      --bad: #bb2b35;
+      --ok: #17845f;
+      --shadow: 0 8px 20px rgba(23, 32, 45, 0.08);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font-family: Inter, "Segoe UI", "Microsoft YaHei", Arial, sans-serif;
+      letter-spacing: 0;
+    }
+    .app {
+      display: grid;
+      grid-template-columns: 260px minmax(0, 1fr);
+      min-height: 100vh;
+    }
+    aside {
+      background: #18212d;
+      color: #eef4f7;
+      padding: 24px 18px;
+      border-right: 1px solid #111922;
+    }
+    aside h1 {
+      margin: 0 0 8px;
+      font-size: 22px;
+      line-height: 1.2;
+    }
+    aside p {
+      margin: 0 0 22px;
+      color: #b9c3cf;
+      font-size: 13px;
+      line-height: 1.6;
+    }
+    nav {
+      display: grid;
+      gap: 8px;
+    }
+    nav a {
+      color: #ecf4f7;
+      text-decoration: none;
+      padding: 10px 12px;
+      border-radius: 6px;
+      background: rgba(255,255,255,0.06);
+      font-size: 14px;
+    }
+    nav a:hover { background: rgba(255,255,255,0.12); }
+    main {
+      padding: 22px;
+      display: grid;
+      gap: 18px;
+      align-content: start;
+    }
+    .topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+    }
+    .topbar h2 {
+      margin: 0;
+      font-size: 24px;
+      line-height: 1.2;
+    }
+    .status-pill {
+      min-width: 170px;
+      text-align: center;
+      padding: 9px 12px;
+      border-radius: 999px;
+      background: #eaf7f2;
+      color: var(--ok);
+      font-weight: 700;
+      border: 1px solid #b8e1d3;
+    }
+    .grid {
+      display: grid;
+      gap: 14px;
+    }
+    .metrics {
+      grid-template-columns: repeat(6, minmax(130px, 1fr));
+    }
+    .metric, .panel {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      box-shadow: var(--shadow);
+    }
+    .metric {
+      padding: 14px;
+      min-height: 106px;
+      display: grid;
+      align-content: space-between;
+      gap: 8px;
+    }
+    .metric span, .muted {
+      color: var(--muted);
+      font-size: 13px;
+    }
+    .metric strong {
+      font-size: 24px;
+      line-height: 1.1;
+    }
+    .metric small {
+      color: var(--muted);
+      font-size: 12px;
+    }
+    .two-col {
+      grid-template-columns: minmax(0, 1.1fr) minmax(340px, 0.9fr);
+      align-items: start;
+    }
+    .panel {
+      padding: 18px;
+      overflow: hidden;
+    }
+    .panel h3 {
+      margin: 0 0 14px;
+      font-size: 17px;
+    }
+    .flow {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+      gap: 10px;
+      align-items: stretch;
+    }
+    .step {
+      position: relative;
+      background: var(--panel-2);
+      border: 1px solid #d4dbe4;
+      border-radius: 8px;
+      padding: 12px;
+      min-height: 95px;
+    }
+    .step b {
+      display: block;
+      font-size: 14px;
+      margin-bottom: 8px;
+    }
+    .step span {
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.45;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 14px;
+    }
+    th, td {
+      padding: 9px 8px;
+      border-bottom: 1px solid var(--line);
+      text-align: left;
+      vertical-align: top;
+    }
+    th {
+      width: 110px;
+      color: var(--muted);
+      font-weight: 600;
+    }
+    .paths {
+      display: grid;
+      gap: 8px;
+      font-size: 13px;
+      color: var(--muted);
+      word-break: break-all;
+    }
+    .sim {
+      display: grid;
+      grid-template-columns: minmax(260px, 0.75fr) minmax(0, 1fr);
+      gap: 18px;
+      align-items: start;
+    }
+    .controls {
+      display: grid;
+      gap: 12px;
+    }
+    label.control {
+      display: grid;
+      gap: 6px;
+      font-size: 14px;
+    }
+    input[type="range"] {
+      width: 100%;
+      accent-color: var(--accent-2);
+    }
+    input[type="checkbox"] {
+      width: 18px;
+      height: 18px;
+      accent-color: var(--accent);
+    }
+    .check {
+      display: grid;
+      grid-template-columns: 28px minmax(0, 1fr) auto;
+      gap: 10px;
+      align-items: center;
+      padding: 11px 12px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      margin-bottom: 8px;
+      background: #fff;
+    }
+    .dot {
+      display: grid;
+      place-items: center;
+      width: 24px;
+      height: 24px;
+      border-radius: 999px;
+      background: #edf2f7;
+      color: var(--muted);
+      font-weight: 800;
+    }
+    .check.pass .dot {
+      background: #e8f7ef;
+      color: var(--ok);
+    }
+    .check.fail .dot {
+      background: #fff1e2;
+      color: var(--warn);
+    }
+    .check strong {
+      font-size: 14px;
+    }
+    .check small {
+      color: var(--muted);
+    }
+    .result-banner {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 14px 16px;
+      border-radius: 8px;
+      background: #fff3e0;
+      border: 1px solid #ffd09a;
+      color: var(--warn);
+      margin-bottom: 14px;
+      font-weight: 800;
+    }
+    .result-banner.ready {
+      background: #e8f7ef;
+      border-color: #a8ddc4;
+      color: var(--ok);
+    }
+    .bar-row {
+      display: grid;
+      gap: 6px;
+      margin-bottom: 11px;
+    }
+    .bar-label {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      font-size: 13px;
+    }
+    .bar-label b { color: var(--muted); }
+    .bar-track {
+      height: 9px;
+      background: #e8edf3;
+      border-radius: 999px;
+      overflow: hidden;
+    }
+    .bar-fill {
+      height: 100%;
+      background: linear-gradient(90deg, var(--accent), var(--accent-2));
+    }
+    .compact-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+    @media (max-width: 1180px) {
+      .metrics { grid-template-columns: repeat(3, minmax(150px, 1fr)); }
+      .flow { grid-template-columns: repeat(3, minmax(120px, 1fr)); }
+      .step::after { content: ""; }
+      .two-col, .sim { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 760px) {
+      .app { grid-template-columns: 1fr; }
+      aside { position: static; }
+      main { padding: 14px; }
+      .metrics, .compact-grid, .flow { grid-template-columns: 1fr; }
+      .topbar { align-items: flex-start; flex-direction: column; }
+      .status-pill { width: 100%; }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <aside>
+      <h1>Double OK GUI</h1>
+      <p>训练数据、模型产物、实时门控逻辑集中可视化。</p>
+      <nav>
+        <a href="#overview">结果概览</a>
+        <a href="#flow">识别流程</a>
+        <a href="#gate">门控模拟</a>
+        <a href="#data">数据分布</a>
+      </nav>
+    </aside>
+    <main>
+      <section class="topbar" id="overview">
+        <div>
+          <h2>当前工程结果</h2>
+          <p class="muted">训练用 landmark CSV；运行时用摄像头视频帧转 landmark。</p>
+        </div>
+        <div class="status-pill" id="projectStatus">LOADED</div>
+      </section>
+
+      <section class="grid metrics">
+        
+        <article class="metric">
+          <span>训练 CSV</span>
+          <strong>已找到</strong>
+          <small>468.7 MB</small>
+        </article>
+        
+
+        <article class="metric">
+          <span>样本行数</span>
+          <strong>303,697</strong>
+          <small>每行是一只手</small>
+        </article>
+        
+
+        <article class="metric">
+          <span>OK 正样本</span>
+          <strong>31,041</strong>
+          <small>10.2%</small>
+        </article>
+        
+
+        <article class="metric">
+          <span>not OK 负样本</span>
+          <strong>272,656</strong>
+          <small>89.8%</small>
+        </article>
+        
+
+        <article class="metric">
+          <span>特征列</span>
+          <strong>96</strong>
+          <small>总列数 102</small>
+        </article>
+        
+
+        <article class="metric">
+          <span>模型文件</span>
+          <strong>已找到</strong>
+          <small>2.7 KB</small>
+        </article>
+        
+      </section>
+
+      <section class="grid two-col">
+        <div class="panel" id="flow">
+          <h3>运行时识别流程</h3>
+          <div class="flow">
+            <div class="step"><b>视频帧</b><span>摄像头逐帧输入 BGR 图像。</span></div>
+            <div class="step"><b>MediaPipe</b><span>检测最多两只手，输出 21 个点。</span></div>
+            <div class="step"><b>特征</b><span>归一化坐标、距离、角度、伸展分数。</span></div>
+            <div class="step"><b>单手 OK</b><span>模型或规则分数判断每只手。</span></div>
+            <div class="step"><b>双手稳定</b><span>最近窗口内多帧命中才通过。</span></div>
+            <div class="step"><b>采集门控</b><span>姿态、入框、居中、分离全部通过。</span></div>
+          </div>
+        </div>
+        <div class="panel">
+          <h3>关键配置</h3>
+          <table><tr><th>OK 阈值</th><td>0.68</td></tr>
+<tr><th>稳定窗口</th><td>5</td></tr>
+<tr><th>稳定命中</th><td>3</td></tr>
+<tr><th>最多手数</th><td>2</td></tr>
+<tr><th>中心 X</th><td>0.2 - 0.8</td></tr>
+<tr><th>中心 Y</th><td>0.18 - 0.82</td></tr>
+<tr><th>双手距离</th><td>0.16</td></tr>
+<tr><th>眼镜姿态</th><td>默认不需要</td></tr></table>
+        </div>
+      </section>
+
+      <section class="panel" id="gate">
+        <h3>门控模拟器</h3>
+        <div class="sim">
+          <div class="controls">
+            <label class="control">检测到的手数 <span id="handCountText"></span>
+              <input id="handCount" type="range" min="0" max="2" step="1" value="2">
+            </label>
+            <label class="control">双手距离 <span id="separationText"></span>
+              <input id="separation" type="range" min="0" max="0.5" step="0.01" value="0.22">
+            </label>
+            <label class="control">pitch <span id="pitchText"></span>
+              <input id="pitch" type="range" min="-45" max="45" step="1" value="0">
+            </label>
+            <label class="control">roll <span id="rollText"></span>
+              <input id="roll" type="range" min="-35" max="35" step="1" value="0">
+            </label>
+            <label class="control">yaw <span id="yawText"></span>
+              <input id="yaw" type="range" min="-60" max="60" step="1" value="0">
+            </label>
+            <label class="control"><span><input id="poseRequired" type="checkbox"> 要求眼镜姿态</span></label>
+            <label class="control"><span><input id="poseAvailable" type="checkbox" checked> 姿态数据可用</span></label>
+            <label class="control"><span><input id="visible" type="checkbox" checked> 双手完整入框</span></label>
+            <label class="control"><span><input id="centered" type="checkbox" checked> 双手在中心区域</span></label>
+            <label class="control"><span><input id="stableOk" type="checkbox" checked> 稳定双手 OK</span></label>
+          </div>
+          <div>
+            <div class="result-banner" id="gateResult"><span>MAKE_DOUBLE_OK</span><small>等待计算</small></div>
+            <div id="checkList"></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="grid compact-grid" id="data">
+        <div class="panel">
+          <h3>Split 分布</h3>
+          
+            <div class="bar-row">
+              <div class="bar-label"><span>train</span><b>169,945</b></div>
+              <div class="bar-track"><div class="bar-fill" style="width: 55.96%"></div></div>
+            </div>
+            
+
+            <div class="bar-row">
+              <div class="bar-label"><span>test</span><b>130,756</b></div>
+              <div class="bar-track"><div class="bar-fill" style="width: 43.05%"></div></div>
+            </div>
+            
+
+            <div class="bar-row">
+              <div class="bar-label"><span>val</span><b>2,996</b></div>
+              <div class="bar-track"><div class="bar-fill" style="width: 0.99%"></div></div>
+            </div>
+            
+        </div>
+        <div class="panel">
+          <h3>手势类别 Top 12</h3>
+          
+            <div class="bar-row">
+              <div class="bar-label"><span>ok</span><b>31,041</b></div>
+              <div class="bar-track"><div class="bar-fill" style="width: 10.22%"></div></div>
+            </div>
+            
+
+            <div class="bar-row">
+              <div class="bar-label"><span>palm</span><b>11,977</b></div>
+              <div class="bar-track"><div class="bar-fill" style="width: 3.94%"></div></div>
+            </div>
+            
+
+            <div class="bar-row">
+              <div class="bar-label"><span>stop</span><b>11,948</b></div>
+              <div class="bar-track"><div class="bar-fill" style="width: 3.93%"></div></div>
+            </div>
+            
+
+            <div class="bar-row">
+              <div class="bar-label"><span>three2</span><b>11,948</b></div>
+              <div class="bar-track"><div class="bar-fill" style="width: 3.93%"></div></div>
+            </div>
+            
+
+            <div class="bar-row">
+              <div class="bar-label"><span>four</span><b>11,940</b></div>
+              <div class="bar-track"><div class="bar-fill" style="width: 3.93%"></div></div>
+            </div>
+            
+
+            <div class="bar-row">
+              <div class="bar-label"><span>three</span><b>11,906</b></div>
+              <div class="bar-track"><div class="bar-fill" style="width: 3.92%"></div></div>
+            </div>
+            
+
+            <div class="bar-row">
+              <div class="bar-label"><span>call</span><b>11,892</b></div>
+              <div class="bar-track"><div class="bar-fill" style="width: 3.92%"></div></div>
+            </div>
+            
+
+            <div class="bar-row">
+              <div class="bar-label"><span>one</span><b>11,886</b></div>
+              <div class="bar-track"><div class="bar-fill" style="width: 3.91%"></div></div>
+            </div>
+            
+
+            <div class="bar-row">
+              <div class="bar-label"><span>peace_inverted</span><b>11,885</b></div>
+              <div class="bar-track"><div class="bar-fill" style="width: 3.91%"></div></div>
+            </div>
+            
+
+            <div class="bar-row">
+              <div class="bar-label"><span>rock</span><b>11,882</b></div>
+              <div class="bar-track"><div class="bar-fill" style="width: 3.91%"></div></div>
+            </div>
+            
+
+            <div class="bar-row">
+              <div class="bar-label"><span>two_up</span><b>11,880</b></div>
+              <div class="bar-track"><div class="bar-fill" style="width: 3.91%"></div></div>
+            </div>
+            
+
+            <div class="bar-row">
+              <div class="bar-label"><span>stop_inverted</span><b>11,870</b></div>
+              <div class="bar-track"><div class="bar-fill" style="width: 3.91%"></div></div>
+            </div>
+            
+        </div>
+      </section>
+
+      <section class="panel">
+        <h3>文件路径</h3>
+        <div class="paths">
+          <div>Config: configs/default.json</div>
+          <div>CSV: data/processed/hagrid_ok_features.csv</div>
+          <div>Model: models/ok_hand_numpy_logreg.pkl</div>
+        </div>
+      </section>
+    </main>
+  </div>
+  <script>
+    const DASHBOARD = {"config_path": "configs/default.json", "config": {"max_num_hands": 2, "ok_threshold": 0.68, "stable_window": 5, "stable_min_positive": 3, "min_detection_confidence": 0.55, "min_tracking_confidence": 0.55, "capture_gate": {"require_glasses_pose": false, "pitch_min": -20.0, "pitch_max": 20.0, "roll_min": -12.0, "roll_max": 12.0, "yaw_min": -25.0, "yaw_max": 25.0, "frame_margin": 0.03, "center_x_min": 0.2, "center_x_max": 0.8, "center_y_min": 0.18, "center_y_max": 0.82, "min_hand_separation": 0.16, "use_stable_double_ok": true}}, "csv": {"file": {"path": "data/processed/hagrid_ok_features.csv", "exists": true, "size_bytes": 491506652, "size_label": "468.7 MB"}, "row_count": 303697, "positive_count": 31041, "negative_count": 272656, "feature_count": 96, "column_count": 102, "split_counts": {"train": 169945, "test": 130756, "val": 2996}, "gesture_counts": {"ok": 31041, "palm": 11977, "stop": 11948, "three2": 11948, "four": 11940, "three": 11906, "call": 11892, "one": 11886, "peace_inverted": 11885, "rock": 11882, "two_up": 11880, "stop_inverted": 11870}}, "model": {"path": "models/ok_hand_numpy_logreg.pkl", "exists": true, "size_bytes": 2743, "size_label": "2.7 KB"}};
+    const cfg = DASHBOARD.config || {};
+    const gateCfg = cfg.capture_gate || {};
+    const promptMap = {
+      ready: ["READY_TO_CAPTURE", "条件满足，开始采集"],
+      glasses_pose_missing: ["WAITING_GLASSES_POSE", "等待眼镜姿态数据"],
+      glasses_pose_bad: ["ADJUST_GLASSES_ANGLE", "请调整眼镜角度"],
+      need_two_hands: ["SHOW_TWO_HANDS", "请把双手放入相机画面"],
+      hands_out_of_frame: ["HANDS_OUT_OF_FRAME", "请把双手完整放入画面"],
+      hands_not_centered: ["MOVE_HANDS_TO_CENTER", "请把双手移到画面中心"],
+      hands_too_close: ["SEPARATE_HANDS", "请将双手分开一些"],
+      need_double_ok: ["MAKE_DOUBLE_OK", "请双手分开并做出 OK 手势"]
+    };
+    const checks = [
+      ["pose", "眼镜姿态", "pose"],
+      ["twoHands", "检测两只手", "hand"],
+      ["visible", "双手完整入框", "frame"],
+      ["centered", "双手在中心区域", "center"],
+      ["separated", "双手分开", "distance"],
+      ["doubleOk", "稳定双手 OK", "gesture"]
+    ];
+    const ids = ["handCount", "separation", "pitch", "roll", "yaw", "poseRequired", "poseAvailable", "visible", "centered", "stableOk"];
+    ids.forEach((id) => document.getElementById(id).addEventListener("input", update));
+    document.getElementById("poseRequired").checked = Boolean(gateCfg.require_glasses_pose);
+
+    function inRange(value, min, max) {
+      return value >= min && value <= max;
+    }
+    function evaluate() {
+      const handCount = Number(document.getElementById("handCount").value);
+      const separation = Number(document.getElementById("separation").value);
+      const pitch = Number(document.getElementById("pitch").value);
+      const roll = Number(document.getElementById("roll").value);
+      const yaw = Number(document.getElementById("yaw").value);
+      const poseRequired = document.getElementById("poseRequired").checked;
+      const poseAvailable = document.getElementById("poseAvailable").checked;
+      const visible = document.getElementById("visible").checked;
+      const centered = document.getElementById("centered").checked;
+      const stableOk = document.getElementById("stableOk").checked;
+      const poseOk = !poseRequired || (poseAvailable &&
+        inRange(pitch, gateCfg.pitch_min ?? -20, gateCfg.pitch_max ?? 20) &&
+        inRange(roll, gateCfg.roll_min ?? -12, gateCfg.roll_max ?? 12) &&
+        inRange(yaw, gateCfg.yaw_min ?? -25, gateCfg.yaw_max ?? 25));
+      const state = {
+        pose: poseOk,
+        twoHands: handCount >= 2,
+        visible,
+        centered,
+        separated: separation >= (gateCfg.min_hand_separation ?? 0.16),
+        doubleOk: stableOk
+      };
+      let reason = "ready";
+      if (poseRequired && !poseAvailable) reason = "glasses_pose_missing";
+      else if (!poseOk) reason = "glasses_pose_bad";
+      else if (!state.twoHands) reason = "need_two_hands";
+      else if (!state.visible) reason = "hands_out_of_frame";
+      else if (!state.centered) reason = "hands_not_centered";
+      else if (!state.separated) reason = "hands_too_close";
+      else if (!state.doubleOk) reason = "need_double_ok";
+      return { reason, state, values: { handCount, separation, pitch, roll, yaw } };
+    }
+    function update() {
+      const result = evaluate();
+      document.getElementById("handCountText").textContent = `${result.values.handCount}`;
+      document.getElementById("separationText").textContent = `${result.values.separation.toFixed(2)}`;
+      document.getElementById("pitchText").textContent = `${result.values.pitch}°`;
+      document.getElementById("rollText").textContent = `${result.values.roll}°`;
+      document.getElementById("yawText").textContent = `${result.values.yaw}°`;
+
+      const banner = document.getElementById("gateResult");
+      const [label, prompt] = promptMap[result.reason];
+      banner.classList.toggle("ready", result.reason === "ready");
+      banner.innerHTML = `<span>${label}</span><small>${prompt}</small>`;
+
+      const list = document.getElementById("checkList");
+      list.innerHTML = checks.map(([key, label, tag]) => {
+        const pass = result.state[key];
+        return `<div class="check ${pass ? "pass" : "fail"}">
+          <div class="dot">${pass ? "✓" : "!"}</div>
+          <strong>${label}</strong>
+          <small>${tag}</small>
+        </div>`;
+      }).join("");
+    }
+    update();
+  </script>
+</body>
+</html>

@@ -1,0 +1,41 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "double-ok-gesture"
+version = "0.1.0"
+description = "Two-hand OK gesture recognition with hand landmarks and a lightweight classifier."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+  "numpy>=1.24,<2",
+  "opencv-contrib-python>=4.8,<4.12",
+  "mediapipe==0.10.21",
+  "scikit-learn>=1.3,<2",
+  "joblib>=1.3",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=7.4",
+]
+
+[project.scripts]
+double-ok-demo = "double_ok_gesture.demo:main"
+double-ok-prepare-hagrid = "double_ok_gesture.prepare_hagrid:main"
+double-ok-train = "double_ok_gesture.train:main"
+double-ok-eval = "double_ok_gesture.evaluate:main"
+double-ok-capture = "double_ok_gesture.capture_samples:main"
+double-ok-gui = "double_ok_gesture.gui:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+addopts = [
+  "-p", "no:launch_testing",
+  "-p", "no:launch_ros",
+]
