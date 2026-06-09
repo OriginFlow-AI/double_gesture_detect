@@ -1,0 +1,122 @@
+device:
+  vendor: Orbbec
+  model: Gemini 335
+  usb_id: "2bc5:0800"
+  serial: CP0HC5300092
+  recommended_firmware: 1.6.00
+
+recommended_camera:
+  stream: left_ir
+  reason: global_shutter
+  rostopic: /camera/left_ir/image_raw
+  resolution: [1280, 800]
+  frame_rate_hz: 30.0
+  projection_model: pinhole
+  distortion_model: radtan
+  mirror: false
+  flip: false
+  rotation_degrees: 0
+  rectify: false
+  depth_alignment: false
+  manufacturer_typical_intrinsics_for_sanity_check_only:
+    source: datasheet_typical_depth_intrinsics_at_1280x800
+    fx: 620.0
+    fy: 620.0
+    cx: 640.0
+    cy: 400.0
+  fov_derived_intrinsics_for_sanity_check_only:
+    source: manufacturer_91x65_degree_ir_stream_fov
+    fx: 628.93
+    fy: 627.87
+    cx: 640.0
+    cy: 400.0
+    engineering_outlier_threshold_percent: 20.0
+
+manufacturer_geometry_for_sanity_check_only:
+  coordinate_axes: [x_right, y_down, z_forward]
+  left_ir_depth_origin_m: [0.0, 0.0, 0.0]
+  imu_origin_from_left_ir_m: [-0.000246, -0.000065, -0.016948]
+  left_ir_to_imu_center_distance_m: 0.016950
+  color_origin_from_left_ir_m: [0.014000, 0.0, 0.002020]
+  use_as_kalibr_initial_transform: false
+
+alternative_color_camera:
+  stream: color
+  warning: rolling_shutter
+  rostopic: /camera/color/image_raw
+  resolution: [1280, 720]
+  frame_rate_hz: 30.0
+  projection_model: pinhole
+  distortion_model: radtan
+  fov_derived_intrinsics_for_sanity_check_only:
+    source: manufacturer_86x55_degree_color_fov
+    fx: 686.32
+    fy: 691.55
+    cx: 640.0
+    cy: 360.0
+
+imu:
+  rostopic: /camera/gyro_accel/sample
+  update_rate_hz: 200.0
+  accelerometer_range_g: 4
+  gyroscope_range_dps: 1000
+  synchronized_accel_gyro_output: true
+  accelerometer_factory_correction: true
+  gyroscope_factory_correction: true
+  bootstrap_noise:
+    gyroscope_noise_density_rad_s_sqrt_hz: 7.0711e-4
+    gyroscope_random_walk_rad_s2_sqrt_hz: 4.0e-5
+    accelerometer_noise_density_m_s2_sqrt_hz: 5.6569e-3
+    accelerometer_random_walk_m_s3_sqrt_hz: 4.0e-3
+
+target:
+  type: aprilgrid
+  columns: 6
+  rows: 6
+  tag_size_m: 0.036
+  tag_spacing_ratio: 0.30
+  total_printed_grid_width_m: 0.270
+  paper: A3
+  print_scale_percent: 100
+  required_measurement_tolerance_m: 0.0002
+
+camera_intrinsic_dataset:
+  camera_record_rate_hz: 30.0
+  kalibr_bag_frequency_hz: 4.0
+  duration_seconds: 90
+  target_distance_m: [0.35, 1.20]
+  target_image_coverage_fraction: [0.15, 0.80]
+  minimum_detected_frames: 80
+  recommended_detected_frames: 150
+
+camera_imu_dataset:
+  camera_rate_hz: 30.0
+  imu_rate_hz: 200.0
+  duration_seconds: 150
+  minimum_duration_seconds: 120
+  maximum_duration_seconds: 180
+  warmup_seconds: 60
+  starting_stationary_seconds: 5
+  ending_stationary_seconds: 5
+  target_visible_frame_ratio_minimum: 0.70
+  angular_speed_target_dps: [30.0, 90.0]
+  angular_speed_hard_maximum_dps: 150.0
+  translations_per_axis_minimum: 3
+  rotations_per_axis_minimum: 3
+  estimated_initial_time_offset_seconds: 0.0
+
+image_quality:
+  fixed_exposure_start_microseconds: 3000
+  preferred_exposure_max_microseconds: 5000
+  maximum_motion_blur_pixels: 1.5
+  auto_exposure_during_recording: false
+  laser_or_pattern_projector: off_if_visible_in_calibration_image
+
+acceptance:
+  camera_reprojection_error_mean_px_max: 0.30
+  camera_reprojection_error_mean_px_preferred: 0.20
+  camera_imu_reprojection_error_mean_px_max: 0.50
+  repeated_rotation_difference_degrees_max: 0.50
+  repeated_translation_difference_m_max: 0.005
+  repeated_time_offset_difference_seconds_max: 0.002
+  minimum_successful_repeated_runs: 3

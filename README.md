@@ -192,3 +192,11 @@ scripts/gui_report.sh
 
 所有识别与门控阈值集中在 `configs/default.json`。生产审计、验收与遗留风险见
 `docs/production_readiness.md`。
+
+Gemini 335 六面 IMU 标定的推荐采样与验收参数位于
+`configs/gemini335_six_face_calibration.json`，具体说明见
+`docs/gemini335_six_face_calibration.md`。该配置与采集门控中的
+`pitch/roll/yaw` 阈值用途不同。
+
+用于 Kalibr 相机-IMU 标定的完整参数位于 `configs/kalibr/gemini335/`，
+操作说明见 `docs/gemini335_kalibr.md`。

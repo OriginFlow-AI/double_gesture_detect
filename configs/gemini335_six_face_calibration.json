@@ -1,0 +1,163 @@
+{
+  "schema_version": 1,
+  "device": {
+    "vendor": "Orbbec",
+    "model": "Gemini 335",
+    "usb_id": "2bc5:0800",
+    "connected_device_serial": "CP0HC5300092",
+    "connected_device_firmware": null,
+    "recommended_firmware": "1.6.00"
+  },
+  "manufacturer_specification": {
+    "imu": "6DoF accelerometer and gyroscope",
+    "axes": {
+      "x_positive": "right",
+      "y_positive": "down",
+      "z_positive": "forward from the camera toward the scene"
+    },
+    "accelerometer": {
+      "range_g": 4.0,
+      "range_m_s2": 39.2,
+      "supported_sample_rates_hz": [
+        50,
+        100,
+        200,
+        500,
+        1000
+      ]
+    },
+    "gyroscope": {
+      "range_dps": 1000.0,
+      "range_rad_s": 17.45,
+      "supported_sample_rates_hz": [
+        50,
+        100,
+        200,
+        500,
+        1000
+      ]
+    },
+    "operating_temperature_c": {
+      "at_15_fps": {
+        "minimum": -10.0,
+        "maximum": 45.0
+      },
+      "at_30_or_60_fps": {
+        "minimum": -10.0,
+        "maximum": 40.0
+      }
+    }
+  },
+  "derived_values": {
+    "standard_gravity_m_s2": 9.80665,
+    "four_g_exact_m_s2": 39.2266,
+    "four_g_datasheet_rounded_m_s2": 39.2,
+    "one_thousand_dps_exact_rad_s": 17.453293,
+    "one_thousand_dps_datasheet_rounded_rad_s": 17.45
+  },
+  "calibration_strategy": {
+    "provenance": "initial engineering recommendation, not a manufacturer guarantee",
+    "mode": "verify_factory_intrinsics_then_apply_residual_correction_once",
+    "gravity_m_s2": 9.80665,
+    "sample_rate_hz": 200,
+    "warmup_seconds": 60,
+    "settle_seconds_per_face": 5,
+    "sample_seconds_per_face": 10,
+    "samples_per_face": 2000,
+    "trim_fraction_each_tail": 0.1,
+    "estimator": "axis_wise_trimmed_mean",
+    "factory_intrinsics_policy": "read and record from Orbbec SDK; do not manually apply unless the SDK sample semantics are confirmed to be uncalibrated raw values",
+    "manual_factory_intrinsics_application": false,
+    "initial_residual_correction_application_count": 0,
+    "maximum_residual_correction_application_count": 1
+  },
+  "faces": [
+    {
+      "id": "x_positive_up",
+      "instruction": "Place the camera so its +X axis points vertically upward.",
+      "expected_acceleration_m_s2": [
+        9.80665,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "id": "x_negative_up",
+      "instruction": "Place the camera so its -X axis points vertically upward.",
+      "expected_acceleration_m_s2": [
+        -9.80665,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "id": "y_positive_up",
+      "instruction": "Place the camera so its +Y axis points vertically upward.",
+      "expected_acceleration_m_s2": [
+        0.0,
+        9.80665,
+        0.0
+      ]
+    },
+    {
+      "id": "y_negative_up",
+      "instruction": "Place the camera so its -Y axis points vertically upward.",
+      "expected_acceleration_m_s2": [
+        0.0,
+        -9.80665,
+        0.0
+      ]
+    },
+    {
+      "id": "z_positive_up",
+      "instruction": "Place the camera with its front optical face pointing vertically upward.",
+      "expected_acceleration_m_s2": [
+        0.0,
+        0.0,
+        9.80665
+      ]
+    },
+    {
+      "id": "z_negative_up",
+      "instruction": "Place the camera with its rear face pointing vertically upward.",
+      "expected_acceleration_m_s2": [
+        0.0,
+        0.0,
+        -9.80665
+      ]
+    }
+  ],
+  "sample_acceptance": {
+    "provenance": "initial engineering screening thresholds; tune from measured stationary data",
+    "acceleration_norm_error_max_m_s2": 0.49033,
+    "dominant_axis_min_abs_m_s2": 9.31632,
+    "cross_axis_max_abs_m_s2": 0.98067,
+    "accelerometer_axis_std_max_m_s2": 0.08,
+    "gyroscope_norm_mean_max_rad_s": 0.03,
+    "gyroscope_axis_std_max_rad_s": 0.01,
+    "minimum_valid_sample_ratio": 0.95
+  },
+  "result_acceptance": {
+    "provenance": "initial engineering acceptance targets; not published Orbbec limits",
+    "accelerometer_bias_max_abs_m_s2": 0.5,
+    "accelerometer_scale_factor_min": 0.95,
+    "accelerometer_scale_factor_max": 1.05,
+    "corrected_face_error_max_abs_m_s2": 0.15,
+    "corrected_gravity_norm_rmse_max_m_s2": 0.1,
+    "gyroscope_bias_max_abs_rad_s": 0.03
+  },
+  "calculation": {
+    "accelerometer_bias": "bias_axis = (mean_positive_axis + mean_negative_axis) / 2",
+    "accelerometer_scale": "scale_axis = (2 * gravity) / (mean_positive_axis - mean_negative_axis)",
+    "accelerometer_correction": "corrected_axis = (raw_axis - bias_axis) * scale_axis",
+    "gyroscope_bias": "bias_axis = trimmed_mean(all stationary samples)",
+    "gyroscope_correction": "corrected_axis = raw_axis - bias_axis"
+  },
+  "limitations": [
+    "Six-face static calibration estimates accelerometer bias and diagonal scale only.",
+    "Static samples estimate gyroscope zero bias but not gyroscope scale.",
+    "Gemini 335 has no magnetometer in the published specification, so six-face calibration cannot provide absolute yaw or eliminate yaw drift.",
+    "Do not overwrite or double-apply the factory IMU intrinsic calibration returned by Orbbec SDK.",
+    "The connected device firmware version has not yet been read; 1.6.00 is the manufacturer-recommended version, not a measured local value."
+  ]
+}
