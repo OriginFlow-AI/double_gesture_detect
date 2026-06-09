@@ -6,6 +6,8 @@ import argparse
 import logging
 import math
 import time
+from datetime import datetime
+from pathlib import Path
 
 from .camera import (
     CameraSettings,
@@ -22,8 +24,9 @@ from .capture_gate import (
     load_glasses_pose,
 )
 from .config import capture_gate_config, load_config, recognizer_config
+from .live_ui import LiveDashboardRenderer
 from .recognizer import DoubleOKRecognizer
-from .runtime import RuntimeMetrics, configure_logging, draw_runtime_overlay
+from .runtime import RuntimeMetrics, configure_logging
 
 LOGGER = logging.getLogger(__name__)
 
@@ -52,6 +55,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--read-failure-limit", type=int, default=5)
     parser.add_argument("--target-fps", type=float, default=25.0)
     parser.add_argument("--status-interval", type=float, default=1.0)
+    parser.add_argument("--dashboard-width", type=int, default=1440)
+    parser.add_argument("--dashboard-height", type=int, default=810)
+    parser.add_argument("--fullscreen", action="store_true")
+    parser.add_argument("--screenshot-dir", default="reports/live")
     parser.add_argument("--headless", action="store_true", help="Print results without opening a window.")
     parser.add_argument("--list-cameras", action="store_true", help="List Linux video devices and exit.")
     parser.add_argument("--capture-gate", action="store_true", help="Show pre-capture readiness prompts.")
@@ -130,6 +137,7 @@ def main() -> None:
     left_camera = None
     right_camera = None
     metrics = RuntimeMetrics()
+    dashboard = LiveDashboardRenderer(args.dashboard_width, args.dashboard_height)
     last_status_time = 0.0
     try:
         left_camera = open_camera(camera_settings(args, left_camera_source))
@@ -139,6 +147,20 @@ def main() -> None:
         left_recognizer = DoubleOKRecognizer(model_path=args.model, **recognizer_config(cfg))
         if stereo_enabled:
             right_recognizer = DoubleOKRecognizer(model_path=args.model, **recognizer_config(cfg))
+        if not args.headless:
+            cv2.namedWindow("double_ok_gesture", cv2.WINDOW_NORMAL)
+            if args.fullscreen:
+                cv2.setWindowProperty(
+                    "double_ok_gesture",
+                    cv2.WND_PROP_FULLSCREEN,
+                    cv2.WINDOW_FULLSCREEN,
+                )
+            else:
+                cv2.resizeWindow(
+                    "double_ok_gesture",
+                    args.dashboard_width,
+                    args.dashboard_height,
+                )
 
         while True:
             left_frame = left_camera.read()
@@ -185,9 +207,10 @@ def main() -> None:
                 continue
 
             left_recognizer.draw(left_frame, left_result)
+            primary_decision = None
             if decision:
-                left_decision = decision.left if stereo_enabled else decision
-                draw_gate_overlay(left_frame, left_decision, gate_cfg)
+                primary_decision = decision.left if stereo_enabled else decision
+                draw_gate_overlay(left_frame, primary_decision, gate_cfg)
 
             if stereo_enabled and right_frame is not None and right_result is not None:
                 right_recognizer.draw(right_frame, right_result)
@@ -210,16 +233,29 @@ def main() -> None:
                 frame = left_frame
                 camera_label = _camera_overlay_label(left_camera)
 
-            draw_runtime_overlay(
+            rendered = dashboard.render(
                 frame,
+                left_result,
+                primary_decision,
                 snapshot,
-                camera_label,
+                camera_label=camera_label,
                 target_fps=args.target_fps,
+                gate_ready=decision.ready if decision else None,
+                gate_reason=decision.reason if decision else None,
+                gate_prompt=decision.prompt if decision else None,
+                model_label=Path(args.model).name if args.model else "Geometry rules",
             )
-            cv2.imshow("double_ok_gesture", frame)
+            cv2.imshow("double_ok_gesture", rendered)
             key = cv2.waitKey(1) & 0xFF
             if key in (ord("q"), 27):
                 break
+            if key == ord("s"):
+                screenshot_dir = Path(args.screenshot_dir)
+                screenshot_dir.mkdir(parents=True, exist_ok=True)
+                screenshot_path = screenshot_dir / (datetime.now().strftime("double_ok_%Y%m%d_%H%M%S") + ".png")
+                if not cv2.imwrite(str(screenshot_path), rendered):
+                    raise OSError(f"Failed to save screenshot: {screenshot_path}")
+                LOGGER.info("Saved screenshot to %s", screenshot_path)
     finally:
         if left_camera:
             left_camera.close()

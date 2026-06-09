@@ -383,36 +383,23 @@ class PromptSpeaker:
             )
 
 
-def draw_gate_overlay(frame_bgr: np.ndarray, decision: CaptureGateDecision, config: CaptureGateConfig) -> None:
-    import cv2
+def draw_gate_overlay(
+    frame_bgr: np.ndarray,
+    decision: CaptureGateDecision,
+    config: CaptureGateConfig,
+) -> np.ndarray:
+    from .live_ui import draw_capture_guides
 
-    h, w = frame_bgr.shape[:2]
-    x1 = int(config.center_x_min * w)
-    x2 = int(config.center_x_max * w)
-    y1 = int(config.center_y_min * h)
-    y2 = int(config.center_y_max * h)
-    color = (40, 200, 40) if decision.ready else (40, 160, 255)
-    cv2.rectangle(frame_bgr, (x1, y1), (x2, y2), color, 2)
-    cv2.putText(frame_bgr, OVERLAY_LABELS[decision.reason], (24, 82), cv2.FONT_HERSHEY_SIMPLEX, 0.75, color, 2)
-    checks = [
-        ("POSE", decision.glasses_pose_ok),
-        ("VISIBLE", decision.hands_visible),
-        ("CENTER", decision.hands_centered),
-        ("SEPARATE", decision.hands_separated),
-        ("GESTURE", decision.gesture_ok),
-    ]
-    for index, (name, passed) in enumerate(checks):
-        check_color = (40, 200, 40) if passed else (40, 160, 255)
-        marker = "OK" if passed else "--"
-        cv2.putText(
-            frame_bgr,
-            f"{name}:{marker}",
-            (24, 112 + index * 24),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            0.52,
-            check_color,
-            1,
-        )
+    return draw_capture_guides(
+        frame_bgr,
+        decision,
+        (
+            config.center_x_min,
+            config.center_x_max,
+            config.center_y_min,
+            config.center_y_max,
+        ),
+    )
 
 
 def _check_glasses_pose(

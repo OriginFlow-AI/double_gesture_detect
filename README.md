@@ -63,8 +63,17 @@ scripts/check_camera.sh /dev/video0
 scripts/run_demo.sh /dev/video0
 ```
 
-实时窗口显示手部框、21 点、左右手 OK 分数、门控检查项、FPS、处理延迟和实际分辨率。按
-`Q` 或 `Esc` 退出。设备刚接入尚未就绪时会自动重试；连续读帧失败会明确报错。
+实时窗口采用仪表盘布局：
+
+- 左侧显示实时画面、21 点手部骨架、目标区域和操作提示。
+- 右侧显示五项门控进度、左右手置信度、模型和设备状态。
+- 顶部显示最终状态、FPS、处理延迟和摄像头。
+
+按 `Q` 或 `Esc` 退出，按 `S` 保存界面截图到 `reports/live/`。使用
+`--fullscreen` 可进入全屏，使用 `--dashboard-width` 和 `--dashboard-height` 可调整渲染尺寸。
+设备刚接入尚未就绪时会自动重试；连续读帧失败会明确报错。
+
+界面预览见 `reports/live_ui_preview.png`。
 
 直接运行 Python 入口：
 

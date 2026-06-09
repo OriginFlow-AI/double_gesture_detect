@@ -25,6 +25,7 @@ src/double_ok_gesture/camera.py          # 摄像头打开、重试、断流和�
 src/double_ok_gesture/recognizer.py      # 单手 OK 和双手 OK 识别
 src/double_ok_gesture/capture_gate.py    # 采集前门控：FOV、双手分开、姿态、稳定 OK
 src/double_ok_gesture/runtime.py         # FPS、处理延迟、日志和实时叠加层
+src/double_ok_gesture/live_ui.py         # 实时仪表盘、手部骨架和门控状态面板
 src/double_ok_gesture/prepare_hagrid.py  # HaGRID JSON -> 特征 CSV
 src/double_ok_gesture/train.py           # 训练模型
 src/double_ok_gesture/evaluate.py        # 评估模型

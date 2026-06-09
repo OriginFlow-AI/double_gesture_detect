@@ -163,26 +163,9 @@ class DoubleOKRecognizer:
         return self.process_rgb(frame_rgb)
 
     def draw(self, frame_bgr: np.ndarray, result: DoubleOKResult) -> np.ndarray:
-        import cv2
+        from .live_ui import draw_hand_tracking
 
-        color = (40, 200, 40) if result.stable_double_ok else (40, 40, 230)
-        status = "DOUBLE_OK" if result.stable_double_ok else "not double ok"
-        cv2.putText(frame_bgr, status, (24, 42), cv2.FONT_HERSHEY_SIMPLEX, 1.0, color, 2)
-
-        h, w = frame_bgr.shape[:2]
-        for hand in result.hands:
-            pts = hand.landmarks
-            xs = pts[:, 0] * w
-            ys = pts[:, 1] * h
-            x1, y1 = int(xs.min()), int(ys.min())
-            x2, y2 = int(xs.max()), int(ys.max())
-            hand_color = (40, 220, 40) if hand.is_ok else (60, 160, 255)
-            cv2.rectangle(frame_bgr, (x1, y1), (x2, y2), hand_color, 2)
-            label = f"{hand.handedness} OK:{hand.ok_score:.2f}"
-            cv2.putText(frame_bgr, label, (x1, max(24, y1 - 8)), cv2.FONT_HERSHEY_SIMPLEX, 0.55, hand_color, 2)
-            for x, y, _ in pts:
-                cv2.circle(frame_bgr, (int(x * w), int(y * h)), 2, hand_color, -1)
-        return frame_bgr
+        return draw_hand_tracking(frame_bgr, result)
 
 
 def _bounded_score(score: float) -> float:
