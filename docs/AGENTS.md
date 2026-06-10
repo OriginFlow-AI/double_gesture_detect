@@ -25,4 +25,5 @@ ctest --test-dir build --output-on-failure
 - Do not reintroduce Python entrypoints.
 - Keep core gate and feature logic testable without a camera.
 - Use C++ text model artifacts under `models/*.txt`.
-- MediaPipe C++ landmark integration is still pending.
+- The live demo currently uses an OpenCV heuristic hand detector; MediaPipe C++ integration remains the preferred
+  production-accuracy backend.

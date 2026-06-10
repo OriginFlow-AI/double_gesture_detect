@@ -9,7 +9,8 @@
 3. C++ 逻辑回归训练、评估和文本模型保存/加载。
 4. C++ 命令行入口。
 5. C++ 单元测试和 `scripts/test.sh`。
-6. 移除 Python 包、pytest 测试、`pyproject.toml`、`requirements.txt`。
+6. 参考 Allan calibrator 的 Qt Widgets 暗色工作台风格，重建实时 demo 界面。
+7. 移除 Python 包、pytest 测试、`pyproject.toml`、`requirements.txt`。
 
 ## 当前命令
 
@@ -23,6 +24,6 @@ scripts/run_demo.sh /dev/video0
 
 ## 下一步
 
-1. 接入 MediaPipe C++ 或其他 hand landmark provider。
-2. 把实时 UI 从临时 OpenCV 状态显示升级为完整仪表盘。
+1. 接入 MediaPipe C++ 或其他高精度 hand landmark provider，替换当前 OpenCV 启发式检测器，恢复 Python 版关键点精度。
+2. 针对眼镜视角采集样本校准 OpenCV/MediaPipe 检测阈值和 OK 阈值。
 3. 增加 CI、覆盖率和真实性能 smoke test。

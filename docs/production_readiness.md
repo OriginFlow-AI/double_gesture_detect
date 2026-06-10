@@ -21,6 +21,7 @@ hand landmarks
 4. 连续读帧失败达到上限时终止，不继续使用陈旧画面。
 5. 正样本必须满足稳定双 OK；负样本必须满足几何门控且当前不是双 OK。
 6. `val` 同时包含正负类时用于验证，否则从 `train` 分层留出；独立 `test` 由评估命令使用。
+7. 实时界面使用 Qt Widgets，视觉风格对齐 Allan calibrator 的暗色工作台，而不是 OpenCV HighGUI 临时窗口。
 
 ## 日常运行
 
@@ -47,6 +48,6 @@ scripts/run_demo.sh /dev/video0
 
 ## 已知风险
 
-1. C++ 版尚未链接 MediaPipe C++ landmark provider，实时 demo 当前只负责相机帧和状态显示。
+1. C++ 版当前使用 OpenCV 启发式手部候选检测；生产级精度仍建议接入 MediaPipe C++ 或同级 landmark provider。
 2. 模型格式已经从 pickle/joblib 切换为文本模型，旧 `.pkl` 模型需要重新训练。
 3. 未经本地眼镜视角数据验证，不应仅通过调整阈值宣称降低了误触发。

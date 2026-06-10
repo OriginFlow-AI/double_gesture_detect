@@ -7,6 +7,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
 find_package(OpenCV REQUIRED COMPONENTS core imgproc imgcodecs videoio highgui)
+find_package(Qt5 5.12 REQUIRED COMPONENTS Widgets)
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(QT5_GUI REQUIRED Qt5Widgets Qt5Test Qt5OpenGL)
 
@@ -15,7 +16,9 @@ add_library(double_ok_gesture_core
     src/capture_gate.cpp
     src/config.cpp
     src/features.cpp
+    src/hand_detector.cpp
     src/json.cpp
+    src/live_ui.cpp
     src/model_io.cpp
     src/recognizer.cpp
     src/runtime.cpp
@@ -52,9 +55,9 @@ add_double_ok_executable(double-ok-gui apps/gui_report.cpp)
 add_double_ok_executable(double-ok-prepare-hagrid apps/prepare_hagrid.cpp)
 add_double_ok_executable(double-ok-train apps/train.cpp)
 
-target_include_directories(double-ok-demo PRIVATE ${QT5_GUI_INCLUDE_DIRS})
-target_compile_options(double-ok-demo PRIVATE ${QT5_GUI_CFLAGS_OTHER})
-target_link_libraries(double-ok-demo PRIVATE opencv_highgui ${QT5_GUI_LIBRARIES})
+target_compile_definitions(double-ok-demo PRIVATE QT_NO_KEYWORDS)
+target_compile_options(double-ok-demo PRIVATE -fPIC)
+target_link_libraries(double-ok-demo PRIVATE Qt5::Widgets)
 
 target_include_directories(double-ok-capture PRIVATE ${QT5_GUI_INCLUDE_DIRS})
 target_compile_options(double-ok-capture PRIVATE ${QT5_GUI_CFLAGS_OTHER})

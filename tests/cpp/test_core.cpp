@@ -9,6 +9,7 @@
 #include "double_ok_gesture/capture_gate.hpp"
 #include "double_ok_gesture/config.hpp"
 #include "double_ok_gesture/features.hpp"
+#include "double_ok_gesture/hand_detector.hpp"
 #include "double_ok_gesture/json.hpp"
 #include "double_ok_gesture/model_io.hpp"
 #include "double_ok_gesture/recognizer.hpp"
@@ -139,13 +140,28 @@ void test_negative_capture_gate() {
 
 void test_recognizer_stability() {
     double_ok_gesture::DoubleOKRecognizer recognizer(double_ok_gesture::OKHandClassifier(0.5), 3, 2);
-    const double_ok_gesture::DetectedHand left{make_ok_landmarks(), "Left"};
-    const double_ok_gesture::DetectedHand right{make_ok_landmarks(), "Right"};
+    const double_ok_gesture::DetectedHand left{make_ok_landmarks(), "Left", std::nullopt, false};
+    const double_ok_gesture::DetectedHand right{make_ok_landmarks(), "Right", std::nullopt, false};
     const auto first = recognizer.process_hands({left, right});
     const auto second = recognizer.process_hands({left, right});
     EXPECT_TRUE(first.double_ok);
     EXPECT_FALSE(first.stable_double_ok);
     EXPECT_TRUE(second.stable_double_ok);
+}
+
+void test_opencv_hand_detector_finds_skin_colored_regions() {
+    cv::Mat image(360, 640, CV_8UC3, cv::Scalar(20, 20, 20));
+    cv::ellipse(image, {200, 180}, {70, 105}, 0, 0, 360, cv::Scalar(80, 130, 200), -1, cv::LINE_AA);
+    cv::ellipse(image, {440, 180}, {70, 105}, 0, 0, 360, cv::Scalar(80, 130, 200), -1, cv::LINE_AA);
+    double_ok_gesture::OpenCVHandDetector detector({2, 0.003, 3.0});
+
+    const auto hands = detector.detect(image);
+
+    EXPECT_EQ(hands.size(), 2U);
+    EXPECT_TRUE(hands[0].ok_score.has_value());
+    EXPECT_TRUE(hands[0].landmarks_estimated);
+    EXPECT_TRUE(*hands[0].ok_score >= 0.0);
+    EXPECT_TRUE(*hands[0].ok_score <= 1.0);
 }
 
 void test_runtime_metrics() {
@@ -217,6 +233,7 @@ int main() {
         {"capture_gate_ready_and_blocks", test_capture_gate_ready_and_blocks},
         {"negative_capture_gate", test_negative_capture_gate},
         {"recognizer_stability", test_recognizer_stability},
+        {"opencv_hand_detector_finds_skin_colored_regions", test_opencv_hand_detector_finds_skin_colored_regions},
         {"runtime_metrics", test_runtime_metrics},
         {"config_and_pose_loading", test_config_and_pose_loading},
         {"json_parser_reads_hagrid_shape", test_json_parser_reads_hagrid_shape},

@@ -62,16 +62,30 @@ double OKHandClassifier::score(const Landmarks& landmarks, const std::string& ha
 
 HandPrediction OKHandClassifier::predict(const Landmarks& landmarks, const std::string& handedness) const {
     const double ok = score(landmarks, handedness);
+    return predict_with_score(landmarks, handedness, ok, false);
+}
+
+HandPrediction OKHandClassifier::predict_with_score(
+    const Landmarks& landmarks,
+    const std::string& handedness,
+    double ok_score,
+    bool landmarks_estimated) const {
+    const double ok = bounded_score(ok_score);
     return {
         handedness.empty() ? "Unknown" : handedness,
         ok,
         ok >= threshold_,
         landmarks,
+        landmarks_estimated,
     };
 }
 
 bool OKHandClassifier::uses_model() const {
     return artifact_.has_value();
+}
+
+double OKHandClassifier::threshold() const {
+    return threshold_;
 }
 
 DoubleOKRecognizer::DoubleOKRecognizer(
@@ -91,7 +105,18 @@ DoubleOKResult DoubleOKRecognizer::process_hands(const std::vector<DetectedHand>
     DoubleOKResult result;
     result.hands.reserve(hands.size());
     for (const DetectedHand& hand : hands) {
-        result.hands.push_back(classifier_.predict(hand.landmarks, hand.handedness));
+        if (hand.ok_score) {
+            result.hands.push_back(
+                classifier_.predict_with_score(
+                    hand.landmarks,
+                    hand.handedness,
+                    *hand.ok_score,
+                    hand.landmarks_estimated));
+        } else {
+            HandPrediction prediction = classifier_.predict(hand.landmarks, hand.handedness);
+            prediction.landmarks_estimated = hand.landmarks_estimated;
+            result.hands.push_back(prediction);
+        }
     }
     result.ok_count = static_cast<int>(std::count_if(result.hands.begin(), result.hands.end(), [](const auto& hand) {
         return hand.is_ok;

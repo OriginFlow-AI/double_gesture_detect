@@ -16,6 +16,7 @@ struct HandPrediction {
     double ok_score = 0.0;
     bool is_ok = false;
     Landmarks landmarks{};
+    bool landmarks_estimated = false;
 };
 
 struct DoubleOKResult {
@@ -28,6 +29,8 @@ struct DoubleOKResult {
 struct DetectedHand {
     Landmarks landmarks{};
     std::string handedness = "Unknown";
+    std::optional<double> ok_score;
+    bool landmarks_estimated = false;
 };
 
 class OKHandClassifier {
@@ -38,7 +41,13 @@ public:
 
     double score(const Landmarks& landmarks, const std::string& handedness = "") const;
     HandPrediction predict(const Landmarks& landmarks, const std::string& handedness = "") const;
+    HandPrediction predict_with_score(
+        const Landmarks& landmarks,
+        const std::string& handedness,
+        double ok_score,
+        bool landmarks_estimated = false) const;
     bool uses_model() const;
+    double threshold() const;
 
 private:
     std::optional<LinearModelArtifact> artifact_;

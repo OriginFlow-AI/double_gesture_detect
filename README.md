@@ -61,9 +61,10 @@ hand landmarks
 -> ready / blocking reason
 ```
 
-The C++ live camera executable currently opens and displays camera frames, but a MediaPipe C++ hand-landmark provider is
-not linked into this repository yet. The core recognizer accepts landmark arrays directly, and all gate/math/model logic is
-C++.
+The C++ live camera executable now runs a local OpenCV hand-candidate detector and feeds those detections through the
+same OK scoring, stability, and capture-gate path. This restores the all-C++ realtime loop without Python. For parity with
+the previous Python MediaPipe accuracy, a MediaPipe C++ or equivalent landmark backend should be added behind the same
+detector interface.
 
 ## Commands
 
@@ -119,4 +120,6 @@ Python `joblib` / `pickle` artifacts are no longer loaded.
 - C++ unit tests cover features, recognizer stability, capture gate decisions, config parsing, runtime metrics, training,
   and model save/load.
 - HaGRID JSON conversion is implemented in C++ with the repository's small JSON parser.
-- The live C++ demo still needs a real C++ landmark provider to match the old MediaPipe-based frame-to-landmark path.
+- `double-ok-demo` is now a Qt Widgets dashboard using the same dark operational style as the Allan calibrator tool.
+- The live C++ demo uses an OpenCV heuristic detector today. Add a MediaPipe C++ or equivalent landmark backend when
+  production-level hand-landmark accuracy is required.
