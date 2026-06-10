@@ -2,21 +2,18 @@
 
 本目录放本地训练模型，不提交大文件。
 
-当前可用模型：
+当前 C++ 默认模型路径：
 
 ```text
-ok_hand_numpy_logreg.pkl
+models/ok_hand_numpy_logreg.txt
 ```
 
-模型采用 joblib/pickle 序列化，只加载本项目生成或其他可信来源的文件。
+模型采用项目自定义的纯文本线性模型格式，不再使用 Python `joblib` / `pickle`。
 
 训练方式：
 
 ```bash
-PYTHONPATH=src python -m double_ok_gesture.train \
-  --input data/processed/hagrid_ok_features.csv \
-  --output models/ok_hand_numpy_logreg.pkl \
-  --model numpy_logreg
+scripts/train_numpy_logreg.sh
 ```
 
 独立测试集评估：

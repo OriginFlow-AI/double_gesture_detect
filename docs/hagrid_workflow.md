@@ -1,102 +1,42 @@
 # HaGRID Workflow
 
-This project uses HaGRID/HaGRIDv2 as a single-hand gesture source.
+当前仓库已经切换为 C++ 工程。
 
-## Why single-hand training works
+## 当前可用路径
 
-The target event is "both hands are OK". Instead of searching for a dataset
-that labels the whole frame as double OK, train a single-hand OK classifier and
-compose two detections at runtime:
-
-```text
-hand_1 == ok and hand_2 == ok -> double_ok
-```
-
-This gives better reuse of open datasets and makes the runtime easier to debug.
-
-## Data mapping
-
-Positive:
-
-```text
-ok
-```
-
-Negative:
-
-```text
-no_gesture
-palm
-fist
-stop
-like
-peace
-one
-two_up
-three
-rock
-```
-
-The prepared CSV contains normalized 21-point hand landmarks and geometric
-features. The model does not need full images unless you later switch to an
-image detector.
-
-`--max-negative-per-class` is applied independently to each dataset split and
-gesture label. This preserves negative examples in train, val, and test.
-
-## Commands
+如果已有处理好的 landmark CSV：
 
 ```bash
-python -m double_ok_gesture.prepare_hagrid \
-  --annotations-dir /path/to/hagrid_annotations \
-  --output data/processed/hagrid_ok_features.csv
-
-python -m double_ok_gesture.train \
-  --input data/processed/hagrid_ok_features.csv \
-  --output models/ok_hand_mlp.joblib \
-  --model mlp
-
-python -m double_ok_gesture.evaluate \
-  --input data/processed/hagrid_ok_features.csv \
-  --model models/ok_hand_mlp.joblib \
-  --split auto
+scripts/train_numpy_logreg.sh
+scripts/evaluate_numpy_logreg.sh
 ```
 
-Training uses `val` only when it contains both classes. Otherwise it creates a
-stratified holdout from `train`. The independent `test` split remains untouched
-until `double_ok_gesture.evaluate`.
-
-`--split auto` prefers the independent test split, then val. Use `--split all`
-only when intentionally inspecting the complete dataset.
-
-## Local raw data
-
-HaGRID reference images from the upstream `images/` directory are stored in:
+默认 CSV：
 
 ```text
-data/raw/hagrid/images/
+data/processed/hagrid_ok_features.csv
 ```
 
-The useful training input for this project is the official landmark annotation
-archive, not the full image archives:
+默认 C++ 模型：
 
 ```text
-data/raw/hagrid/annotations_zip/annotations.zip
-data/raw/hagrid/annotations/
+models/ok_hand_numpy_logreg.txt
 ```
 
-The full per-gesture image archives are tens of GB each. Download them only if
-you later switch from landmark features to an image detector/classifier.
+## HaGRID JSON 转换
 
-## Local validation
-
-Capture a small local validation set after training:
+当前 `double-ok-prepare-hagrid` 是 C++ 实现：
 
 ```bash
-python -m double_ok_gesture.capture_samples --label double_ok --gate --camera /dev/video0
-python -m double_ok_gesture.capture_samples --label not_double_ok --gate --camera /dev/video0
+scripts/prepare_hagrid.sh /path/to/hagrid_annotations
 ```
 
-The positive gate requires stable double OK. The negative gate requires valid
-framing and spacing while rejecting double OK, preventing positive frames from
-being written into the negative directory.
+转换流程是 `annotation JSON -> feature_vector -> hagrid_ok_features.csv`。
+
+## 本地样本
+
+当前 C++ 采样入口支持手动保存摄像头帧：
+
+```bash
+build/double-ok-capture --label double_ok --camera /dev/video0
+```

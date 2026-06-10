@@ -1,0 +1,237 @@
+#include <cmath>
+#include <filesystem>
+#include <fstream>
+#include <iostream>
+#include <stdexcept>
+#include <string>
+#include <vector>
+
+#include "double_ok_gesture/capture_gate.hpp"
+#include "double_ok_gesture/config.hpp"
+#include "double_ok_gesture/features.hpp"
+#include "double_ok_gesture/json.hpp"
+#include "double_ok_gesture/model_io.hpp"
+#include "double_ok_gesture/recognizer.hpp"
+#include "double_ok_gesture/runtime.hpp"
+#include "double_ok_gesture/training.hpp"
+
+namespace {
+
+#define EXPECT_TRUE(expr)                                                                                              \
+    do {                                                                                                               \
+        if (!(expr)) {                                                                                                 \
+            throw std::runtime_error(std::string("EXPECT_TRUE failed: ") + #expr);                                    \
+        }                                                                                                              \
+    } while (false)
+
+#define EXPECT_FALSE(expr) EXPECT_TRUE(!(expr))
+
+#define EXPECT_EQ(lhs, rhs)                                                                                            \
+    do {                                                                                                               \
+        const auto lhs_value = (lhs);                                                                                  \
+        const auto rhs_value = (rhs);                                                                                  \
+        if (!(lhs_value == rhs_value)) {                                                                               \
+            throw std::runtime_error(std::string("EXPECT_EQ failed: ") + #lhs + " != " + #rhs);                      \
+        }                                                                                                              \
+    } while (false)
+
+#define EXPECT_NEAR(lhs, rhs, eps)                                                                                     \
+    do {                                                                                                               \
+        if (std::abs((lhs) - (rhs)) > (eps)) {                                                                         \
+            throw std::runtime_error(std::string("EXPECT_NEAR failed: ") + #lhs + " != " + #rhs);                    \
+        }                                                                                                              \
+    } while (false)
+
+double_ok_gesture::Landmarks make_ok_landmarks() {
+    double_ok_gesture::Landmarks pts{};
+    pts[0] = {0.0, 0.0, 0.0};
+    pts[1] = {0.35, -0.35, 0.0};
+    pts[2] = {0.28, -0.52, 0.0};
+    pts[3] = {0.18, -0.62, 0.0};
+    pts[4] = {0.08, -0.60, 0.0};
+    pts[5] = {-0.35, -0.75, 0.0};
+    pts[6] = {-0.20, -0.65, 0.0};
+    pts[7] = {-0.05, -0.60, 0.0};
+    pts[8] = {0.08, -0.60, 0.0};
+    pts[9] = {-0.05, -1.00, 0.0};
+    pts[10] = {-0.08, -1.65, 0.0};
+    pts[11] = {-0.10, -2.25, 0.0};
+    pts[12] = {-0.12, -2.90, 0.0};
+    pts[13] = {0.22, -0.92, 0.0};
+    pts[14] = {0.30, -1.50, 0.0};
+    pts[15] = {0.36, -2.02, 0.0};
+    pts[16] = {0.42, -2.55, 0.0};
+    pts[17] = {0.48, -0.80, 0.0};
+    pts[18] = {0.60, -1.22, 0.0};
+    pts[19] = {0.70, -1.58, 0.0};
+    pts[20] = {0.80, -1.95, 0.0};
+    return pts;
+}
+
+double_ok_gesture::Landmarks make_open_palm_landmarks() {
+    auto pts = make_ok_landmarks();
+    pts[4] = {0.75, -0.85, 0.0};
+    pts[8] = {-0.38, -2.45, 0.0};
+    return pts;
+}
+
+double_ok_gesture::HandPrediction make_hand(double center_x, double center_y, bool is_ok = true) {
+    double_ok_gesture::Landmarks pts{};
+    for (std::size_t i = 0; i < pts.size(); ++i) {
+        const double offset = -0.02 + 0.04 * static_cast<double>(i) / static_cast<double>(pts.size() - 1);
+        pts[i] = {center_x + offset, center_y, 0.0};
+    }
+    return {"Left", is_ok ? 0.9 : 0.1, is_ok, pts};
+}
+
+double_ok_gesture::DoubleOKResult make_result(std::vector<double_ok_gesture::HandPrediction> hands, bool stable = true) {
+    int ok_count = 0;
+    for (const auto& hand : hands) {
+        ok_count += hand.is_ok ? 1 : 0;
+    }
+    return {std::move(hands), ok_count >= 2, stable, ok_count};
+}
+
+void test_feature_vector_has_stable_shape() {
+    const auto vector = double_ok_gesture::feature_vector(make_ok_landmarks(), "Left");
+    EXPECT_EQ(vector.size(), 96U);
+    for (double value : vector) {
+        EXPECT_TRUE(std::isfinite(value));
+    }
+}
+
+void test_rule_score_prefers_ok_over_open_palm() {
+    const double ok_score = double_ok_gesture::rule_ok_score(make_ok_landmarks(), "Left");
+    const double palm_score = double_ok_gesture::rule_ok_score(make_open_palm_landmarks(), "Left");
+    EXPECT_TRUE(ok_score > 0.65);
+    EXPECT_TRUE(palm_score < ok_score);
+}
+
+void test_capture_gate_ready_and_blocks() {
+    const auto ready = make_result({make_hand(0.4, 0.5), make_hand(0.6, 0.5)});
+    const auto decision = double_ok_gesture::evaluate_capture_gate(
+        ready,
+        double_ok_gesture::CaptureGateConfig{.require_glasses_pose = true},
+        double_ok_gesture::GlassesPose{0.0, 0.0, 0.0});
+    EXPECT_TRUE(decision.ready);
+    EXPECT_EQ(decision.reason, double_ok_gesture::GateReason::Ready);
+
+    const auto missing_pose = double_ok_gesture::evaluate_capture_gate(
+        ready,
+        double_ok_gesture::CaptureGateConfig{.require_glasses_pose = true});
+    EXPECT_FALSE(missing_pose.ready);
+    EXPECT_EQ(missing_pose.reason, double_ok_gesture::GateReason::GlassesPoseMissing);
+
+    const auto not_centered = double_ok_gesture::evaluate_capture_gate(make_result({make_hand(0.08, 0.5), make_hand(0.6, 0.5)}));
+    EXPECT_EQ(not_centered.reason, double_ok_gesture::GateReason::HandsNotCentered);
+}
+
+void test_negative_capture_gate() {
+    const auto negative = make_result({make_hand(0.4, 0.5), make_hand(0.6, 0.5, false)});
+    const auto decision = double_ok_gesture::evaluate_labeled_capture_gate(negative, "not_double_ok");
+    EXPECT_TRUE(decision.ready);
+    EXPECT_TRUE(decision.gesture_ok);
+
+    const auto positive = make_result({make_hand(0.4, 0.5), make_hand(0.6, 0.5)});
+    const auto rejected = double_ok_gesture::evaluate_labeled_capture_gate(positive, "not_double_ok");
+    EXPECT_EQ(rejected.reason, double_ok_gesture::GateReason::AvoidDoubleOK);
+}
+
+void test_recognizer_stability() {
+    double_ok_gesture::DoubleOKRecognizer recognizer(double_ok_gesture::OKHandClassifier(0.5), 3, 2);
+    const double_ok_gesture::DetectedHand left{make_ok_landmarks(), "Left"};
+    const double_ok_gesture::DetectedHand right{make_ok_landmarks(), "Right"};
+    const auto first = recognizer.process_hands({left, right});
+    const auto second = recognizer.process_hands({left, right});
+    EXPECT_TRUE(first.double_ok);
+    EXPECT_FALSE(first.stable_double_ok);
+    EXPECT_TRUE(second.stable_double_ok);
+}
+
+void test_runtime_metrics() {
+    double_ok_gesture::RuntimeMetrics metrics(3);
+    metrics.update(0.0, 0.05);
+    const auto second = metrics.update(0.5, 0.55);
+    const auto third = metrics.update(1.0, 1.05);
+    EXPECT_NEAR(second.fps, 2.0, 1e-9);
+    EXPECT_NEAR(third.fps, 2.0, 1e-9);
+    EXPECT_NEAR(third.processing_ms, 50.0, 1e-9);
+}
+
+void test_config_and_pose_loading() {
+    const auto path = std::filesystem::temp_directory_path() / "double_ok_cpp_config.json";
+    {
+        std::ofstream out(path);
+        out << R"({"ok_threshold":0.7,"capture_gate":{"require_glasses_pose":true,"center_x_min":0.25,"center_x_max":0.75}})";
+    }
+    const auto config = double_ok_gesture::load_runtime_config(path);
+    EXPECT_NEAR(config.recognizer.ok_threshold, 0.7, 1e-12);
+    EXPECT_TRUE(config.capture_gate.require_glasses_pose);
+    EXPECT_NEAR(config.capture_gate.center_x_min, 0.25, 1e-12);
+
+    const auto pose_path = std::filesystem::temp_directory_path() / "double_ok_cpp_pose.json";
+    {
+        std::ofstream out(pose_path);
+        out << R"({"pitch":0.0,"roll":1.0,"yaw":-2.0})";
+    }
+    const auto pose = double_ok_gesture::load_glasses_pose(pose_path);
+    EXPECT_TRUE(pose.has_value());
+    EXPECT_NEAR(*pose->roll, 1.0, 1e-12);
+}
+
+void test_json_parser_reads_hagrid_shape() {
+    const auto json = double_ok_gesture::parse_json(
+        R"({"image_001":{"label":"ok","hand_landmarks":[[[0,0,0],[0,0,0],[0,0,0],[0,0,0],[0,0,0],[0,0,0],[0,0,0],[0,0,0],[0,0,0],[0,0,0],[0,0,0],[0,0,0],[0,0,0],[0,0,0],[0,0,0],[0,0,0],[0,0,0],[0,0,0],[0,0,0],[0,0,0],[0,0,0]]]}})");
+    EXPECT_TRUE(json.is_object());
+    const auto* item = json.get("image_001");
+    EXPECT_TRUE(item != nullptr);
+    EXPECT_EQ(item->get("label")->as_string(), std::string("ok"));
+    EXPECT_EQ(item->get("hand_landmarks")->as_array().front().as_array().size(), 21U);
+}
+
+void test_training_and_model_io() {
+    const auto csv = std::filesystem::temp_directory_path() / "double_ok_cpp_features.csv";
+    {
+        std::ofstream out(csv);
+        out << "split,target,lm_0_x,lm_0_y\n";
+        out << "train,0,0,0\n";
+        out << "train,0,0.1,0\n";
+        out << "train,1,1,1\n";
+        out << "train,1,1.1,1\n";
+    }
+    const auto dataset = double_ok_gesture::load_feature_csv(csv);
+    const auto split = double_ok_gesture::split_data(dataset, 42);
+    const auto model = double_ok_gesture::train_logistic_regression(split.x_train, split.y_train, dataset.feature_columns, 20);
+    const auto model_path = std::filesystem::temp_directory_path() / "double_ok_cpp_model.txt";
+    double_ok_gesture::save_model_artifact(model_path, model);
+    const auto loaded = double_ok_gesture::load_model_artifact(model_path);
+    EXPECT_EQ(loaded.coef.size(), model.coef.size());
+}
+
+}  // namespace
+
+int main() {
+    const std::vector<std::pair<std::string, void (*)()>> tests = {
+        {"feature_vector_has_stable_shape", test_feature_vector_has_stable_shape},
+        {"rule_score_prefers_ok_over_open_palm", test_rule_score_prefers_ok_over_open_palm},
+        {"capture_gate_ready_and_blocks", test_capture_gate_ready_and_blocks},
+        {"negative_capture_gate", test_negative_capture_gate},
+        {"recognizer_stability", test_recognizer_stability},
+        {"runtime_metrics", test_runtime_metrics},
+        {"config_and_pose_loading", test_config_and_pose_loading},
+        {"json_parser_reads_hagrid_shape", test_json_parser_reads_hagrid_shape},
+        {"training_and_model_io", test_training_and_model_io},
+    };
+
+    int failed = 0;
+    for (const auto& [name, test] : tests) {
+        try {
+            test();
+            std::cout << "[PASS] " << name << '\n';
+        } catch (const std::exception& exc) {
+            ++failed;
+            std::cerr << "[FAIL] " << name << ": " << exc.what() << '\n';
+        }
+    }
+    return failed == 0 ? 0 : 1;
+}

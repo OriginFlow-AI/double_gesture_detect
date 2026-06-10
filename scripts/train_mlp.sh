@@ -2,13 +2,7 @@
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
-PYTHON_BIN="${PYTHON:-}"
-if [[ -z "$PYTHON_BIN" && -x .venv/bin/python ]]; then
-  PYTHON_BIN=".venv/bin/python"
-fi
-PYTHON_BIN="${PYTHON_BIN:-python}"
 
-PYTHONPATH=src "$PYTHON_BIN" -m double_ok_gesture.train \
-  --input data/processed/hagrid_ok_features.csv \
-  --output models/ok_hand_mlp.joblib \
-  --model mlp
+echo "C++ build no longer provides the scikit-learn MLP trainer."
+echo "Use scripts/train_numpy_logreg.sh for the built-in C++ logistic model."
+exit 2

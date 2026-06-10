@@ -2,14 +2,15 @@
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
-PYTHON_BIN="${PYTHON:-}"
-if [[ -z "$PYTHON_BIN" && -x .venv/bin/python ]]; then
-  PYTHON_BIN=".venv/bin/python"
-fi
-PYTHON_BIN="${PYTHON_BIN:-python}"
+BUILD_DIR="${BUILD_DIR:-build}"
+CMAKE_BUILD_TYPE="${CMAKE_BUILD_TYPE:-Release}"
+JOBS="${JOBS:-2}"
 
-PYTHONPATH=src "$PYTHON_BIN" -m double_ok_gesture.gui \
+cmake -S . -B "$BUILD_DIR" -DCMAKE_BUILD_TYPE="$CMAKE_BUILD_TYPE" >/dev/null
+cmake --build "$BUILD_DIR" --target double-ok-gui -j "$JOBS" >/dev/null
+
+"$BUILD_DIR/double-ok-gui" \
   --config configs/default.json \
   --csv data/processed/hagrid_ok_features.csv \
-  --model models/ok_hand_numpy_logreg.pkl \
+  --model models/ok_hand_numpy_logreg.txt \
   --output reports/gui/index.html

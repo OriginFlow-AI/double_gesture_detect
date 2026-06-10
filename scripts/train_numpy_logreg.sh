@@ -2,13 +2,14 @@
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
-PYTHON_BIN="${PYTHON:-}"
-if [[ -z "$PYTHON_BIN" && -x .venv/bin/python ]]; then
-  PYTHON_BIN=".venv/bin/python"
-fi
-PYTHON_BIN="${PYTHON_BIN:-python}"
+BUILD_DIR="${BUILD_DIR:-build}"
+CMAKE_BUILD_TYPE="${CMAKE_BUILD_TYPE:-Release}"
+JOBS="${JOBS:-2}"
 
-PYTHONPATH=src "$PYTHON_BIN" -m double_ok_gesture.train \
+cmake -S . -B "$BUILD_DIR" -DCMAKE_BUILD_TYPE="$CMAKE_BUILD_TYPE" >/dev/null
+cmake --build "$BUILD_DIR" --target double-ok-train -j "$JOBS" >/dev/null
+
+"$BUILD_DIR/double-ok-train" \
   --input data/processed/hagrid_ok_features.csv \
-  --output models/ok_hand_numpy_logreg.pkl \
+  --output models/ok_hand_numpy_logreg.txt \
   --model numpy_logreg

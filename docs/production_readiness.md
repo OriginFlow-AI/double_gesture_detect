@@ -3,49 +3,40 @@
 ## 系统边界
 
 ```text
-Orbbec /dev/video0
--> V4L2 + MJPG 摄像头层
--> MediaPipe Hands
--> 21 点归一化特征
--> 单手 OK 模型
--> 双手稳定组合
--> 姿态 / 完整入框 / 居中 / 间距门控
--> ready 或明确阻断原因
+hand landmarks
+-> C++ feature extraction
+-> C++ rule score or linear model
+-> double OK stability window
+-> pose / full-frame / center / separation / gesture gate
+-> ready or blocking reason
 ```
 
-工程负责“是否允许开始采集”的判断，不负责眼镜 IMU 的生产、相机标定、原始数据持久化服务或
-下游业务动作。外部系统应读取门控结果后决定是否真正开始采集。
+工程负责“是否允许开始采集”的判断，不负责眼镜 IMU 的生产、相机标定、原始数据持久化服务或下游业务动作。
 
-## 生产化约定
+## C++ 生产化约定
 
-1. 默认设备是 Orbbec Gemini 335 的 `/dev/video0`。
-2. 摄像头使用 V4L2，优先请求 MJPG、1280x720、30 FPS，启动失败自动重试。
-3. 连续读帧失败达到上限时终止，不继续使用陈旧画面。
-4. 正样本必须满足稳定双 OK；负样本必须满足几何门控且当前不是双 OK。
-5. `val` 同时包含正负类时用于验证，否则从 `train` 分层留出；独立 `test` 只用于最终评估。
-6. 模型路径显式传入后，缺失或特征结构不匹配会立即失败。
+1. 构建入口是 CMake。
+2. 模型格式是项目自定义文本模型，不再加载 pickle/joblib。
+3. 摄像头层使用 OpenCV `VideoCapture`，默认 `/dev/video0`、MJPG、1280x720、30 FPS。
+4. 连续读帧失败达到上限时终止，不继续使用陈旧画面。
+5. 正样本必须满足稳定双 OK；负样本必须满足几何门控且当前不是双 OK。
+6. `val` 同时包含正负类时用于验证，否则从 `train` 分层留出；独立 `test` 由评估命令使用。
 
 ## 日常运行
 
 ```bash
+scripts/test.sh
 scripts/check_camera.sh /dev/video0
 scripts/run_demo.sh /dev/video0
-scripts/test.sh
 ```
-
-实时窗口包含：
-
-- 左侧实时画面、手部骨架、目标区域和当前操作提示。
-- 右侧姿态、可见性、中心区域、双手间距、目标手势五项门控状态。
-- 左右手置信度、FPS、单帧处理耗时、摄像头设备、模型和实际分辨率。
-- `Q`/`Esc` 退出、`S` 保存截图，以及可选全屏模式。
 
 ## 验收指标
 
 代码验收：
 
-- 全部单元测试通过。
-- `python -m compileall` 通过。
+- CMake 配置通过。
+- C++ 编译通过。
+- CTest 通过。
 - `git diff --check` 无空白错误。
 
 设备验收：
@@ -53,20 +44,9 @@ scripts/test.sh
 - `/dev/video0` 能连续返回图像。
 - 实际分辨率和格式符合日志。
 - 拔出设备或连续读帧失败时明确退出。
-- 无手、单手、双手太近、出框、非双 OK、稳定双 OK 均产生正确门控原因。
-
-性能验收：
-
-- 实时窗口观察至少 60 秒。
-- 记录 FPS 和处理延迟，不以摄像头标称 FPS 代替实际推理 FPS。
-- 若低于目标，优先降低输入分辨率，再评估准确率变化。
 
 ## 已知风险
 
-1. 当前 HaGRID 独立测试集上 OK 召回率高，但精确率约 68.7%，仍需眼镜视角负样本校准阈值。
-2. 当前稳定判定是滑动窗口投票，并要求当前帧也是双 OK；尚未引入按场景校准的迟滞状态机。
-3. OpenCV 使用 Qt5 显示窗口，在混合 ROS/Qt 环境中可能输出 `QObject::moveToThread` 警告。
-4. joblib/pickle 反序列化可执行代码，只能加载可信模型。
-5. 双目入口要求两个真实图像节点；V4L2 metadata 节点不能作为右眼图像。
-
-未经本地眼镜视角数据验证，不应仅通过提高模型复杂度或随意修改阈值宣称降低了误触发。
+1. C++ 版尚未链接 MediaPipe C++ landmark provider，实时 demo 当前只负责相机帧和状态显示。
+2. 模型格式已经从 pickle/joblib 切换为文本模型，旧 `.pkl` 模型需要重新训练。
+3. 未经本地眼镜视角数据验证，不应仅通过调整阈值宣称降低了误触发。

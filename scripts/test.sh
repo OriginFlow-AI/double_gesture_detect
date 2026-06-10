@@ -2,12 +2,11 @@
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
-PYTHON_BIN="${PYTHON:-}"
-if [[ -z "$PYTHON_BIN" && -x .venv/bin/python ]]; then
-  PYTHON_BIN=".venv/bin/python"
-fi
-PYTHON_BIN="${PYTHON_BIN:-python}"
 
-PYTHONPATH=src "$PYTHON_BIN" -m ruff check src tests
-PYTHONPATH=src "$PYTHON_BIN" -m ruff format --check src tests
-PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTHONPATH=src "$PYTHON_BIN" -m pytest -q
+BUILD_DIR="${BUILD_DIR:-build}"
+CMAKE_BUILD_TYPE="${CMAKE_BUILD_TYPE:-Release}"
+JOBS="${JOBS:-2}"
+
+cmake -S . -B "$BUILD_DIR" -DCMAKE_BUILD_TYPE="$CMAKE_BUILD_TYPE"
+cmake --build "$BUILD_DIR" -j "$JOBS"
+ctest --test-dir "$BUILD_DIR" --output-on-failure
