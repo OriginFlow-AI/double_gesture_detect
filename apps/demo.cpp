@@ -14,11 +14,15 @@
 #include <QTextEdit>
 #include <QTimer>
 #include <QVBoxLayout>
+#include <chrono>
+#include <cmath>
 #include <filesystem>
+#include <fstream>
 #include <iostream>
 #include <optional>
 #include <stdexcept>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include <opencv2/opencv.hpp>
@@ -48,7 +52,11 @@ struct Args {
     int dashboard_height = 810;
     bool fullscreen = false;
     std::filesystem::path screenshot_dir = "reports/live";
+    std::optional<std::filesystem::path> capture_output_dir;
+    std::optional<double> capture_cooldown_sec;
+    bool disable_auto_capture = false;
     int max_frames = 0;
+    std::string landmark_backend = "rknn";
 };
 
 Args parse_args(int argc, char** argv) {
@@ -97,12 +105,26 @@ Args parse_args(int argc, char** argv) {
             args.fullscreen = true;
         } else if (key == "--screenshot-dir") {
             args.screenshot_dir = next();
+        } else if (key == "--capture-output-dir") {
+            args.capture_output_dir = next();
+        } else if (key == "--capture-cooldown") {
+            args.capture_cooldown_sec = std::stod(next());
+        } else if (key == "--disable-auto-capture") {
+            args.disable_auto_capture = true;
         } else if (key == "--voice-prompts") {
             // Kept for CLI compatibility. TTS is intentionally not spawned in the C++ build.
         } else if (key == "--prompt-interval") {
             (void)next();
         } else if (key == "--max-frames") {
             args.max_frames = std::stoi(next());
+        } else if (key == "--landmark-backend") {
+            args.landmark_backend = next();
+            if (args.landmark_backend != "rknn" && args.landmark_backend != "mediapipe" &&
+                args.landmark_backend != "opencv-heuristic" &&
+                args.landmark_backend != "none") {
+                throw std::invalid_argument(
+                    "--landmark-backend must be one of: rknn, mediapipe, opencv-heuristic, none");
+            }
         } else if (key == "--list-cameras") {
             std::cout << double_ok_gesture::format_video_devices() << '\n';
             std::exit(0);
@@ -177,6 +199,32 @@ QString cameraLabel(const double_ok_gesture::CameraStream& camera) {
         .arg(QString::fromStdString(info.fourcc));
 }
 
+QString backendLabel(const Args& args) {
+    if (args.landmark_backend == "rknn") {
+        return QStringLiteral("检测后端：RKNN hand landmarks（等待模型/SDK）");
+    }
+    if (args.landmark_backend == "opencv-heuristic") {
+        return QStringLiteral("检测后端：OpenCV 候选检测（仅调试，不等价昨天结果）");
+    }
+    if (args.landmark_backend == "none") {
+        return QStringLiteral("检测后端：关闭");
+    }
+    return QStringLiteral("检测后端：MediaPipe C++ landmarks（等待接入）");
+}
+
+QString backendState(const Args& args) {
+    if (args.landmark_backend == "rknn") {
+        return QStringLiteral("bad");
+    }
+    if (args.landmark_backend == "opencv-heuristic") {
+        return QStringLiteral("warning");
+    }
+    if (args.landmark_backend == "none") {
+        return QStringLiteral("idle");
+    }
+    return QStringLiteral("bad");
+}
+
 void appendEvent(QTextEdit* event_text, const QString& level, const QString& message) {
     event_text->append(
         QStringLiteral("[%1] %2  %3")
@@ -185,11 +233,60 @@ void appendEvent(QTextEdit* event_text, const QString& level, const QString& mes
             .arg(message));
 }
 
+std::string timestampName(const std::string& prefix, int index, const std::string& extension) {
+    const auto now = std::chrono::system_clock::now();
+    const auto millis = std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()).count();
+    return prefix + "_" + std::to_string(millis) + "_" + std::to_string(index) + extension;
+}
+
+struct CaptureWriter {
+    explicit CaptureWriter(double_ok_gesture::DataCaptureConfig config) : config(std::move(config)) {}
+
+    std::optional<std::filesystem::path> maybeSave(
+        const cv::Mat& frame,
+        const double_ok_gesture::DoubleOKResult& result,
+        const double_ok_gesture::CaptureGateDecision& decision,
+        const std::string& backend) {
+        if (!config.enabled || !decision.ready || frame.empty()) {
+            return std::nullopt;
+        }
+        const double now = double_ok_gesture::monotonic_seconds();
+        if (last_saved_time >= 0.0 && now - last_saved_time < config.cooldown_sec) {
+            return std::nullopt;
+        }
+        std::filesystem::create_directories(config.output_dir);
+        const int index = ++saved_count;
+        const auto image_path = config.output_dir / timestampName("double_ok_centered", index, ".jpg");
+        if (!cv::imwrite(image_path.string(), frame)) {
+            throw std::runtime_error("Failed to write capture frame: " + image_path.string());
+        }
+
+        const auto meta_path = image_path;
+        std::ofstream meta(meta_path.string() + ".json");
+        meta << "{\n";
+        meta << "  \"image\": \"" << image_path.filename().string() << "\",\n";
+        meta << "  \"backend\": \"" << backend << "\",\n";
+        meta << "  \"reason\": \"" << double_ok_gesture::gate_reason_value(decision.reason) << "\",\n";
+        meta << "  \"double_ok\": " << (decision.double_ok ? "true" : "false") << ",\n";
+        meta << "  \"hands_centered\": " << (decision.hands_centered ? "true" : "false") << ",\n";
+        meta << "  \"hand_count\": " << decision.hand_count << ",\n";
+        meta << "  \"ok_count\": " << result.ok_count << "\n";
+        meta << "}\n";
+
+        last_saved_time = now;
+        return image_path;
+    }
+
+    double_ok_gesture::DataCaptureConfig config;
+    double last_saved_time = -1.0;
+    int saved_count = 0;
+};
+
 struct RuntimeBundle {
     double_ok_gesture::RuntimeConfig config;
     double_ok_gesture::OKHandClassifier classifier;
     double_ok_gesture::DoubleOKRecognizer recognizer;
-    double_ok_gesture::OpenCVHandDetector detector;
+    std::optional<double_ok_gesture::OpenCVHandDetector> heuristic_detector;
     double_ok_gesture::CameraStream camera;
     double_ok_gesture::RuntimeMetrics metrics;
 };
@@ -199,6 +296,18 @@ RuntimeBundle makeRuntime(const Args& args) {
     double_ok_gesture::apply_threshold_override(runtime_config, args.threshold);
     if (args.require_glasses_pose) {
         double_ok_gesture::require_glasses_pose(runtime_config);
+    }
+    if (args.capture_output_dir) {
+        runtime_config.data_capture.output_dir = *args.capture_output_dir;
+    }
+    if (args.capture_cooldown_sec) {
+        runtime_config.data_capture.cooldown_sec = *args.capture_cooldown_sec;
+    }
+    if (args.disable_auto_capture) {
+        runtime_config.data_capture.enabled = false;
+    }
+    if (!std::isfinite(runtime_config.data_capture.cooldown_sec) || runtime_config.data_capture.cooldown_sec < 0.0) {
+        throw std::invalid_argument("--capture-cooldown must be finite and non-negative");
     }
 
     double_ok_gesture::OKHandClassifier classifier = args.model
@@ -211,23 +320,40 @@ RuntimeBundle makeRuntime(const Args& args) {
         classifier,
         static_cast<std::size_t>(runtime_config.recognizer.stable_window),
         static_cast<std::size_t>(runtime_config.recognizer.stable_min_positive));
-    double_ok_gesture::OpenCVHandDetector detector({
-        runtime_config.recognizer.max_num_hands,
-        0.006,
-        3.0,
-    });
+    std::optional<double_ok_gesture::OpenCVHandDetector> heuristic_detector;
+    if (args.landmark_backend == "opencv-heuristic") {
+        heuristic_detector.emplace(double_ok_gesture::HandDetectorConfig{
+            runtime_config.recognizer.max_num_hands,
+            0.006,
+            3.0,
+        });
+    }
     return {
         runtime_config,
         classifier,
         recognizer,
-        detector,
+        std::move(heuristic_detector),
         double_ok_gesture::open_camera(args.camera),
         double_ok_gesture::RuntimeMetrics(),
     };
 }
 
+std::vector<double_ok_gesture::DetectedHand> detectHands(const RuntimeBundle& runtime, const Args& args, const cv::Mat& frame) {
+    if (args.landmark_backend == "opencv-heuristic" && runtime.heuristic_detector) {
+        return runtime.heuristic_detector->detect(frame);
+    }
+    return {};
+}
+
 int runHeadless(const Args& args) {
     RuntimeBundle runtime = makeRuntime(args);
+    CaptureWriter capture_writer(runtime.config.data_capture);
+    if (args.landmark_backend == "rknn") {
+        std::cerr << "RKNN hand landmark backend is not available in this build; provide RKNN SDK/model for RV1126.\n";
+    }
+    if (args.landmark_backend == "mediapipe") {
+        std::cerr << "MediaPipe C++ landmark backend is not available in this build; no heuristic boxes will be drawn.\n";
+    }
     double last_status = 0.0;
     int frames = 0;
     while (true) {
@@ -236,12 +362,15 @@ int runHeadless(const Args& args) {
             continue;
         }
         const double started = double_ok_gesture::monotonic_seconds();
-        const auto detected_hands = runtime.detector.detect(*frame);
+        const auto detected_hands = detectHands(runtime, args, *frame);
         const auto result = runtime.recognizer.process_hands(detected_hands);
         std::optional<double_ok_gesture::CaptureGateDecision> decision;
         if (args.capture_gate) {
             const auto pose = args.glasses_pose ? double_ok_gesture::load_glasses_pose(*args.glasses_pose) : std::nullopt;
             decision = double_ok_gesture::evaluate_capture_gate(result, runtime.config.capture_gate, pose);
+            if (auto saved = capture_writer.maybeSave(*frame, result, *decision, args.landmark_backend)) {
+                std::cout << "capture_saved=" << saved->string() << '\n';
+            }
         }
         const auto snapshot = runtime.metrics.update(started);
         ++frames;
@@ -335,8 +464,8 @@ int main(int argc, char** argv) {
         status_layout->addWidget(makeSectionTitle(QStringLiteral("采集状态")));
         auto* workflow_label = makeMetaLabel(QStringLiteral("等待检测双手"));
         workflow_label->setProperty("state", QStringLiteral("idle"));
-        auto* detector_label = makeMetaLabel(QStringLiteral("检测后端：OpenCV 候选检测（临时）"));
-        detector_label->setProperty("state", QStringLiteral("warning"));
+        auto* detector_label = makeMetaLabel(backendLabel(args));
+        detector_label->setProperty("state", backendState(args));
         auto* model_label = makeMetaLabel(
             args.model ? QStringLiteral("模型：%1").arg(QString::fromStdString(args.model->filename().string()))
                        : QStringLiteral("模型：几何规则"));
@@ -364,10 +493,22 @@ int main(int argc, char** argv) {
         status_layout->addWidget(makeSectionTitle(QStringLiteral("事件日志")));
         auto* event_text = makeReadOnlyText(QStringLiteral("EventText"), 150);
         appendEvent(event_text, QStringLiteral("信息"), QStringLiteral("应用已启动。"));
-        appendEvent(
-            event_text,
-            QStringLiteral("警告"),
-            QStringLiteral("当前后端是 OpenCV 启发式检测，生产精度需要接入 MediaPipe C++ landmark。"));
+        if (args.landmark_backend == "rknn") {
+            appendEvent(
+                event_text,
+                QStringLiteral("错误"),
+                QStringLiteral("当前构建尚未接入 RKNN hand landmark 后端；RV1126 需要 rknn 模型和运行库。"));
+        } else if (args.landmark_backend == "opencv-heuristic") {
+            appendEvent(
+                event_text,
+                QStringLiteral("警告"),
+                QStringLiteral("当前启用了 OpenCV 候选检测，仅用于摄像头调试，不代表昨天 Python/MediaPipe 结果。"));
+        } else if (args.landmark_backend == "mediapipe") {
+            appendEvent(
+                event_text,
+                QStringLiteral("错误"),
+                QStringLiteral("当前构建尚未接入 MediaPipe C++ landmark 后端，因此不会绘制候选框。"));
+        }
         status_layout->addWidget(event_text, 1);
 
         auto* controls = new QHBoxLayout();
@@ -408,6 +549,7 @@ int main(int argc, char** argv) {
         )");
 
         cv::Mat last_rendered_frame;
+        CaptureWriter capture_writer(runtime.config.data_capture);
         int frames = 0;
         QObject::connect(quit_button, &QPushButton::clicked, &application, &QApplication::quit);
         QObject::connect(screenshot_button, &QPushButton::clicked, [&]() {
@@ -430,12 +572,18 @@ int main(int argc, char** argv) {
                 return;
             }
             const double started = double_ok_gesture::monotonic_seconds();
-            const auto detected_hands = runtime.detector.detect(*frame);
+            const auto detected_hands = detectHands(runtime, args, *frame);
             const auto result = runtime.recognizer.process_hands(detected_hands);
             std::optional<double_ok_gesture::CaptureGateDecision> decision;
             if (args.capture_gate) {
                 const auto pose = args.glasses_pose ? double_ok_gesture::load_glasses_pose(*args.glasses_pose) : std::nullopt;
                 decision = double_ok_gesture::evaluate_capture_gate(result, runtime.config.capture_gate, pose);
+                if (auto saved = capture_writer.maybeSave(*frame, result, *decision, args.landmark_backend)) {
+                    appendEvent(
+                        event_text,
+                        QStringLiteral("采集"),
+                        QStringLiteral("条件满足，已保存：%1").arg(QString::fromStdString(saved->string())));
+                }
             }
             const auto snapshot = runtime.metrics.update(started);
             ++frames;
@@ -489,7 +637,9 @@ int main(int argc, char** argv) {
                                      .arg(hand.landmarks_estimated ? QStringLiteral("候选框") : QStringLiteral("21点"));
             }
             if (hands_summary.isEmpty()) {
-                hands_summary = QStringLiteral("未检测到手部候选");
+                hands_summary = args.landmark_backend == "opencv-heuristic"
+                                    ? QStringLiteral("未检测到手部")
+                                    : QStringLiteral("等待真实 21 点 hand landmarks");
             }
             hands_text->setPlainText(hands_summary);
             window.statusBar()->showMessage(

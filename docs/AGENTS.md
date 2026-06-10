@@ -25,5 +25,6 @@ ctest --test-dir build --output-on-failure
 - Do not reintroduce Python entrypoints.
 - Keep core gate and feature logic testable without a camera.
 - Use C++ text model artifacts under `models/*.txt`.
-- The live demo currently uses an OpenCV heuristic hand detector; MediaPipe C++ integration remains the preferred
-  production-accuracy backend.
+- The live demo target is the old Python MediaPipe Hands behavior deployed as a C++/RV1126 RKNN pipeline: real 21-point
+  hand landmarks, skeleton overlay, OK scoring, centered-field gate, and capture. OpenCV heuristic detection is only an
+  explicit debug fallback and must be labeled as non-parity.

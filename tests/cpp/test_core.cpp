@@ -127,6 +127,37 @@ void test_capture_gate_ready_and_blocks() {
     EXPECT_EQ(not_centered.reason, double_ok_gesture::GateReason::HandsNotCentered);
 }
 
+void test_capture_gate_requires_double_ok_and_centered() {
+    const auto double_ok_not_centered =
+        double_ok_gesture::evaluate_capture_gate(make_result({make_hand(0.08, 0.5), make_hand(0.6, 0.5)}));
+    EXPECT_FALSE(double_ok_not_centered.ready);
+    EXPECT_TRUE(double_ok_not_centered.double_ok);
+    EXPECT_FALSE(double_ok_not_centered.hands_centered);
+    EXPECT_EQ(double_ok_not_centered.reason, double_ok_gesture::GateReason::HandsNotCentered);
+
+    const auto centered_not_double_ok =
+        double_ok_gesture::evaluate_capture_gate(make_result({make_hand(0.4, 0.5), make_hand(0.6, 0.5, false)}));
+    EXPECT_FALSE(centered_not_double_ok.ready);
+    EXPECT_TRUE(centered_not_double_ok.hands_centered);
+    EXPECT_FALSE(centered_not_double_ok.double_ok);
+    EXPECT_EQ(centered_not_double_ok.reason, double_ok_gesture::GateReason::NeedDoubleOK);
+
+    const auto centered_double_ok =
+        double_ok_gesture::evaluate_capture_gate(make_result({make_hand(0.4, 0.5), make_hand(0.6, 0.5)}));
+    EXPECT_TRUE(centered_double_ok.ready);
+    EXPECT_TRUE(centered_double_ok.double_ok);
+    EXPECT_TRUE(centered_double_ok.hands_centered);
+    EXPECT_EQ(centered_double_ok.reason, double_ok_gesture::GateReason::Ready);
+}
+
+void test_capture_gate_requires_stable_double_ok() {
+    const auto unstable_double_ok =
+        double_ok_gesture::evaluate_capture_gate(make_result({make_hand(0.4, 0.5), make_hand(0.6, 0.5)}, false));
+    EXPECT_FALSE(unstable_double_ok.ready);
+    EXPECT_FALSE(unstable_double_ok.double_ok);
+    EXPECT_EQ(unstable_double_ok.reason, double_ok_gesture::GateReason::NeedDoubleOK);
+}
+
 void test_negative_capture_gate() {
     const auto negative = make_result({make_hand(0.4, 0.5), make_hand(0.6, 0.5, false)});
     const auto decision = double_ok_gesture::evaluate_labeled_capture_gate(negative, "not_double_ok");
@@ -178,12 +209,14 @@ void test_config_and_pose_loading() {
     const auto path = std::filesystem::temp_directory_path() / "double_ok_cpp_config.json";
     {
         std::ofstream out(path);
-        out << R"({"ok_threshold":0.7,"capture_gate":{"require_glasses_pose":true,"center_x_min":0.25,"center_x_max":0.75}})";
+        out << R"({"ok_threshold":0.7,"capture_gate":{"require_glasses_pose":true,"center_x_min":0.25,"center_x_max":0.75},"data_capture":{"output_dir":"data/raw/test_gate","cooldown_sec":2.5}})";
     }
     const auto config = double_ok_gesture::load_runtime_config(path);
     EXPECT_NEAR(config.recognizer.ok_threshold, 0.7, 1e-12);
     EXPECT_TRUE(config.capture_gate.require_glasses_pose);
     EXPECT_NEAR(config.capture_gate.center_x_min, 0.25, 1e-12);
+    EXPECT_EQ(config.data_capture.output_dir.string(), std::string("data/raw/test_gate"));
+    EXPECT_NEAR(config.data_capture.cooldown_sec, 2.5, 1e-12);
 
     const auto pose_path = std::filesystem::temp_directory_path() / "double_ok_cpp_pose.json";
     {
@@ -231,6 +264,8 @@ int main() {
         {"feature_vector_has_stable_shape", test_feature_vector_has_stable_shape},
         {"rule_score_prefers_ok_over_open_palm", test_rule_score_prefers_ok_over_open_palm},
         {"capture_gate_ready_and_blocks", test_capture_gate_ready_and_blocks},
+        {"capture_gate_requires_double_ok_and_centered", test_capture_gate_requires_double_ok_and_centered},
+        {"capture_gate_requires_stable_double_ok", test_capture_gate_requires_stable_double_ok},
         {"negative_capture_gate", test_negative_capture_gate},
         {"recognizer_stability", test_recognizer_stability},
         {"opencv_hand_detector_finds_skin_colored_regions", test_opencv_hand_detector_finds_skin_colored_regions},

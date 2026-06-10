@@ -22,6 +22,7 @@ hand landmarks
 5. 正样本必须满足稳定双 OK；负样本必须满足几何门控且当前不是双 OK。
 6. `val` 同时包含正负类时用于验证，否则从 `train` 分层留出；独立 `test` 由评估命令使用。
 7. 实时界面使用 Qt Widgets，视觉风格对齐 Allan calibrator 的暗色工作台，而不是 OpenCV HighGUI 临时窗口。
+8. 自动采集只允许在 `gate_ready=1` 时写盘；`gate_ready` 同时要求稳定双 OK 和双手位于中心区域。
 
 ## 日常运行
 
@@ -48,6 +49,6 @@ scripts/run_demo.sh /dev/video0
 
 ## 已知风险
 
-1. C++ 版当前使用 OpenCV 启发式手部候选检测；生产级精度仍建议接入 MediaPipe C++ 或同级 landmark provider。
+1. 本机未发现 RKNN SDK、RKNN runtime 或 `.rknn` 手部关键点模型；生产级结果必须接入 RKNN/RKNPU hand landmark provider。
 2. 模型格式已经从 pickle/joblib 切换为文本模型，旧 `.pkl` 模型需要重新训练。
 3. 未经本地眼镜视角数据验证，不应仅通过调整阈值宣称降低了误触发。

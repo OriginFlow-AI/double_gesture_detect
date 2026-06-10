@@ -31,6 +31,18 @@ model_io.hpp/cpp       C++ 文本模型保存和加载
 json.hpp/cpp           小型 JSON 解析器，用于 HaGRID 转换
 ```
 
+RV1126 相关：
+
+```text
+cmake/toolchains/rv1126-linux-gnueabihf.cmake
+configs/rv1126_uvc.json
+scripts/build_rv1126.sh
+scripts/convert_hand_landmark_to_rknn.sh
+scripts/package_rv1126.sh
+scripts/run_rv1126.sh
+docs/rv1126_deployment.md
+```
+
 命令入口：
 
 ```text

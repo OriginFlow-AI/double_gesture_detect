@@ -24,7 +24,7 @@
   },
   "data_capture": {
     "enabled": true,
-    "output_dir": "data/raw/rv1126_gate",
+    "output_dir": "/userdata/double_ok/captures",
     "cooldown_sec": 1.0
   }
 }

@@ -1,5 +1,6 @@
 #include "double_ok_gesture/config.hpp"
 
+#include <cmath>
 #include <fstream>
 #include <regex>
 #include <stdexcept>
@@ -33,6 +34,15 @@ std::optional<bool> bool_value(const std::string& text, const std::string& key) 
     return match[1].str() == "true";
 }
 
+std::optional<std::string> string_value(const std::string& text, const std::string& key) {
+    const std::regex pattern("\"" + key + "\"\\s*:\\s*\"([^\"]*)\"");
+    std::smatch match;
+    if (!std::regex_search(text, match, pattern)) {
+        return std::nullopt;
+    }
+    return match[1].str();
+}
+
 void set_if_present(int& target, const std::string& text, const std::string& key) {
     if (auto value = number_value(text, key)) {
         target = static_cast<int>(*value);
@@ -47,6 +57,12 @@ void set_if_present(double& target, const std::string& text, const std::string& 
 
 void set_if_present(bool& target, const std::string& text, const std::string& key) {
     if (auto value = bool_value(text, key)) {
+        target = *value;
+    }
+}
+
+void set_if_present(std::filesystem::path& target, const std::string& text, const std::string& key) {
+    if (auto value = string_value(text, key)) {
         target = *value;
     }
 }
@@ -80,6 +96,13 @@ RuntimeConfig load_runtime_config(const std::filesystem::path& path) {
     set_if_present(config.capture_gate.use_stable_double_ok, text, "use_stable_double_ok");
     set_if_present(config.capture_gate.require_double_ok, text, "require_double_ok");
     config.capture_gate.validate();
+
+    set_if_present(config.data_capture.enabled, text, "enabled");
+    set_if_present(config.data_capture.output_dir, text, "output_dir");
+    set_if_present(config.data_capture.cooldown_sec, text, "cooldown_sec");
+    if (!std::isfinite(config.data_capture.cooldown_sec) || config.data_capture.cooldown_sec < 0.0) {
+        throw std::invalid_argument("data_capture.cooldown_sec must be finite and non-negative");
+    }
     return config;
 }
 

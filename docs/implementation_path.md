@@ -24,6 +24,8 @@ scripts/run_demo.sh /dev/video0
 
 ## 下一步
 
-1. 接入 MediaPipe C++ 或其他高精度 hand landmark provider，替换当前 OpenCV 启发式检测器，恢复 Python 版关键点精度。
-2. 针对眼镜视角采集样本校准 OpenCV/MediaPipe 检测阈值和 OK 阈值。
-3. 增加 CI、覆盖率和真实性能 smoke test。
+1. 接入 RV1126 RKNN/RKNPU hand landmark provider，恢复 Python/MediaPipe 版 21 点关键点精度。
+2. 准备 hand landmark ONNX/RKNN 模型和代表性量化数据。
+3. 在板端验证 USB UVC 摄像头、FPS、延迟、采集保存路径。
+4. 针对眼镜视角采集样本校准检测阈值、OK 阈值和中心区域。
+5. 增加 CI、覆盖率和真实性能 smoke test。

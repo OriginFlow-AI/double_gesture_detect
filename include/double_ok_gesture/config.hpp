@@ -29,9 +29,16 @@ struct CameraConfig {
     int read_failure_limit = 5;
 };
 
+struct DataCaptureConfig {
+    bool enabled = true;
+    std::filesystem::path output_dir = "data/raw/rv1126_gate";
+    double cooldown_sec = 1.0;
+};
+
 struct RuntimeConfig {
     RecognizerConfig recognizer;
     CaptureGateConfig capture_gate;
+    DataCaptureConfig data_capture;
 };
 
 RuntimeConfig load_runtime_config(const std::filesystem::path& path);

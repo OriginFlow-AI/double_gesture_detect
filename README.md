@@ -61,12 +61,21 @@ hand landmarks
 -> ready / blocking reason
 ```
 
-The C++ live camera executable now runs a local OpenCV hand-candidate detector and feeds those detections through the
-same OK scoring, stability, and capture-gate path. This restores the all-C++ realtime loop without Python. For parity with
-the previous Python MediaPipe accuracy, a MediaPipe C++ or equivalent landmark backend should be added behind the same
-detector interface.
+The live camera target is the previous Python MediaPipe behavior: real 21-point hand landmarks feed the same OK scoring,
+stability, and capture-gate path. Production deployment targets RV1126 with an RKNN/RKNPU hand-landmark backend. OpenCV
+skin-region detection is available only as an explicit local debug fallback and must not be treated as the product model.
 
 ## Commands
+
+Normal integrated run:
+
+```bash
+scripts/run_demo.sh /dev/video0
+```
+
+This single command builds the C++ demo if needed, opens the camera, updates the Qt dashboard, runs the current hand
+detection backend, computes OK scores, applies the stable double-OK window, and evaluates the capture gate. The extra
+commands below are diagnostics and validation helpers, not separate product steps.
 
 Camera probe:
 
@@ -74,10 +83,24 @@ Camera probe:
 scripts/check_camera.sh /dev/video0
 ```
 
-Run live camera demo:
+Strict RV1126/parity backend selection:
 
 ```bash
-scripts/run_demo.sh /dev/video0
+scripts/run_demo.sh /dev/video0 --landmark-backend rknn
+```
+
+Automatic capture writes frames only when `gate_ready=1`, meaning stable double OK and centered hands both pass. The
+output path and save cooldown are configured in `data_capture`, and can be overridden locally:
+
+```bash
+scripts/run_demo.sh /dev/video0 --capture-output-dir data/raw/session_001 --capture-cooldown 1.0
+scripts/run_demo.sh /dev/video0 --disable-auto-capture
+```
+
+Local debug fallback only:
+
+```bash
+scripts/run_demo.sh /dev/video0 --landmark-backend opencv-heuristic
 ```
 
 Train the built-in C++ logistic model from a prepared landmark CSV:
@@ -104,6 +127,16 @@ Capture local images:
 build/double-ok-capture --label double_ok --camera /dev/video0
 ```
 
+RV1126 deployment:
+
+```bash
+scripts/convert_hand_landmark_to_rknn.sh models/hand_landmark.onnx models/hand_landmark.rknn
+scripts/build_rv1126.sh
+scripts/package_rv1126.sh
+```
+
+See [docs/rv1126_deployment.md](docs/rv1126_deployment.md).
+
 ## Model Format
 
 The C++ build writes plain text model artifacts such as:
@@ -121,5 +154,6 @@ Python `joblib` / `pickle` artifacts are no longer loaded.
   and model save/load.
 - HaGRID JSON conversion is implemented in C++ with the repository's small JSON parser.
 - `double-ok-demo` is now a Qt Widgets dashboard using the same dark operational style as the Allan calibrator tool.
-- The live C++ demo uses an OpenCV heuristic detector today. Add a MediaPipe C++ or equivalent landmark backend when
-  production-level hand-landmark accuracy is required.
+- The target live result is the previous Python MediaPipe Hands result: real 21-point hand landmarks, skeleton overlay,
+  OK scoring, and capture gate. The RV1126 production backend is expected to be RKNN/RKNPU; the OpenCV detector is only
+  a temporary explicit debug fallback and is not equivalent.
