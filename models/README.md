@@ -2,13 +2,19 @@
 
 本目录放本地训练模型，不提交大文件。
 
-当前 C++ 默认模型路径：
+报告和 `dev_` 内容口径使用的模型：
+
+```text
+models/ok_hand_numpy_logreg.pkl
+```
+
+这个文件是历史 Python/joblib 产物，只加载本项目生成或其他可信来源的文件。
+
+当前 `main` 的必要 C++ 实现无法直接反序列化 `.pkl`；本地 C++ 训练和实时运行会使用纯文本模型：
 
 ```text
 models/ok_hand_numpy_logreg.txt
 ```
-
-模型采用项目自定义的纯文本线性模型格式，不再使用 Python `joblib` / `pickle`。
 
 训练方式：
 

@@ -10,15 +10,18 @@ USB UVC camera
 -> 21-point landmark features
 -> per-hand OK score
 -> stable double OK
--> field-of-view center gate
--> save capture only when both conditions pass
+-> full-frame / center / separation / optional pose gate
+-> save capture only when every gate condition passes
 ```
 
 Capture is allowed only when:
 
 - two hands are detected;
 - both hands are OK;
+- both hands are fully visible in frame;
 - both hands are inside the configured center area;
+- both hands keep the configured minimum separation;
+- glasses pose passes if pose gate is enabled;
 - the double OK decision is stable for the configured window.
 
 ## Required External Artifacts

@@ -1,32 +1,23 @@
 # Double OK Gesture Capture Gate
 
-C++ implementation for two-hand OK gesture capture gating.
+在 GLASSES 端开始采集前，确认以下条件同时满足：
 
-The project no longer uses Python. Core recognition math, capture gate logic, model training/evaluation, camera probing,
-sample capture, and report generation are built with CMake.
+1. 眼镜姿态在允许范围内。
+2. 两只手完整进入相机 FOV 的中心区域。
+3. 两只手保持足够距离。
+4. 两只手稳定做出 OK 手势。
 
-## Requirements
+全部满足时门控返回 `ready=true`，采集流程才保存画面或触发下一步动作。
 
-- CMake 3.20+
-- A C++20 compiler
-- OpenCV 4 with `core`, `imgproc`, `imgcodecs`, `videoio`, and `highgui`
-- Qt5 development libraries when building OpenCV highgui targets
+## 当前说明
 
-On the current development machine the verified toolchain is:
+当前 `main` 分支保留 C++/Qt 实现，这是为了部署和运行环境需要；功能目标、门控逻辑、报告内容和用户可见流程以 `dev_` 的双手 OK 采集门控为主。GUI 边框和深色仪表盘样式沿用 `dev_` 的视觉方向。
 
-```bash
-g++ --version
-cmake --version
-pkg-config --modversion opencv4
-```
+统一口径见 [docs/current_main_contract.md](docs/current_main_contract.md)，架构分层见 [docs/architecture.md](docs/architecture.md)。
 
-## Build And Test
+## 环境安装
 
-```bash
-scripts/test.sh
-```
-
-Equivalent manual commands:
+项目当前使用 CMake 构建 C++ 程序：
 
 ```bash
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
@@ -34,126 +25,108 @@ cmake --build build -j 2
 ctest --test-dir build --output-on-failure
 ```
 
-## Project Layout
+依赖：
+
+- CMake 3.20+
+- C++20 编译器
+- OpenCV 4
+- Qt5 Widgets
+
+## 核心流程
 
 ```text
-include/double_ok_gesture/  Public C++ headers
-src/                        Core C++ library implementation
-apps/                       CLI executables
-tests/cpp/                  C++ unit tests
-configs/                    Runtime and calibration configuration
-scripts/                    Build-and-run helper scripts
-docs/                       Notes and production guidance
-data/                       Raw and processed datasets
-models/                     Generated model artifacts
-reports/                    Generated reports and screenshots
+摄像头 BGR 帧
+-> MediaPipe 风格的两只手 21 点 landmarks
+-> 每只手提取 21 点归一化特征
+-> 模型或几何规则判断单手 OK
+-> 时间窗口判断稳定双手 OK
+-> 姿态、完整入框、中心位置、双手距离门控
+-> ready / 阻断原因
 ```
 
-## Core Runtime Flow
+## 实时运行
 
-```text
-hand landmarks
--> 21-point normalization
--> geometry features and optional linear model score
--> per-hand OK prediction
--> sliding-window stable double OK
--> pose / frame / center / separation / gesture capture gate
--> ready / blocking reason
-```
-
-The live camera target is the previous Python MediaPipe behavior: real 21-point hand landmarks feed the same OK scoring,
-stability, and capture-gate path. Production deployment targets RV1126 with an RKNN/RKNPU hand-landmark backend. OpenCV
-skin-region detection is available only as an explicit local debug fallback and must not be treated as the product model.
-
-## Commands
-
-Normal integrated run:
+先确认 Orbbec 设备可以打开：
 
 ```bash
-scripts/run_demo.sh /dev/video0
+scripts/check_camera.sh
 ```
 
-This single command builds the C++ demo if needed, opens the camera, updates the Qt dashboard, runs the current hand
-detection backend, computes OK scores, applies the stable double-OK window, and evaluates the capture gate. The extra
-commands below are diagnostics and validation helpers, not separate product steps.
-
-Camera probe:
+启动实时界面：
 
 ```bash
-scripts/check_camera.sh /dev/video0
+scripts/run_demo.sh
 ```
 
-Strict RV1126/parity backend selection:
+当前本机如果还没有接入真实 21 点 hand-landmark 后端，可以显式启用调试候选检测查看界面效果：
 
 ```bash
-scripts/run_demo.sh /dev/video0 --landmark-backend rknn
+scripts/run_demo.sh --landmark-backend opencv-heuristic
 ```
 
-Automatic capture writes frames only when `gate_ready=1`, meaning stable double OK and centered hands both pass. The
-output path and save cooldown are configured in `data_capture`, and can be overridden locally:
+脚本会优先选择 Orbbec Gemini 335 的彩色视频节点；当前机器检测到的是 `/dev/video8`，稳定路径是 `/dev/v4l/by-id/usb-Orbbec_R__Orbbec_Gemini_335_CP0HC5300092-video-index0`。需要改用内置摄像头时，显式传入 `/dev/video0`。
 
-```bash
-scripts/run_demo.sh /dev/video0 --capture-output-dir data/raw/session_001 --capture-cooldown 1.0
-scripts/run_demo.sh /dev/video0 --disable-auto-capture
+实时窗口采用仪表盘布局：
+
+- 左侧显示实时画面、手部骨架或候选框、目标区域和操作提示。
+- 右侧显示五项门控进度、左右手置信度、模型和设备状态。
+- 顶部显示最终状态、FPS、处理延迟和摄像头。
+
+按 `Q` 或 `Esc` 退出，按 `S` 保存界面截图到 `reports/live/`。使用 `--fullscreen` 可进入全屏，使用 `--dashboard-width` 和 `--dashboard-height` 可调整渲染尺寸。
+
+## 姿态输入
+
+GLASSES 端可持续写入包含完整角度的 JSON 文件：
+
+```json
+{"pitch": 0.0, "roll": 0.0, "yaw": 0.0}
 ```
 
-Local debug fallback only:
+启用姿态门控：
 
 ```bash
-scripts/run_demo.sh /dev/video0 --landmark-backend opencv-heuristic
+scripts/run_demo.sh \
+  --capture-gate \
+  --require-glasses-pose \
+  --glasses-pose /path/to/glasses_pose.json
 ```
 
-Train the built-in C++ logistic model from a prepared landmark CSV:
+当文件正在被替换、JSON 暂时不完整或缺少任一角度时，门控返回“等待眼镜姿态数据”，不会误判为姿态合格。
+
+## 训练与评估
 
 ```bash
+scripts/prepare_hagrid.sh data/raw/hagrid/annotations
 scripts/train_numpy_logreg.sh
-```
-
-Evaluate the model:
-
-```bash
 scripts/evaluate_numpy_logreg.sh
 ```
 
-Generate the static report:
+负样本上限按 `split + gesture_label` 分别计算，避免某个 split 抢占全部负样本。评估默认选择 `test`，没有 `test` 时选择 `val`，不会默认在训练全集上报告指标。
 
-```bash
-scripts/gui_report.sh
-```
+## 本地采集
 
-Capture local images:
+当前 `double-ok-capture` 是手动采集工具，按空格保存原始帧：
 
 ```bash
 build/double-ok-capture --label double_ok --camera /dev/video0
 ```
 
-RV1126 deployment:
+需要门控自动采集时，使用实时 demo；只有门控 ready 时才会写盘：
 
 ```bash
-scripts/convert_hand_landmark_to_rknn.sh models/hand_landmark.onnx models/hand_landmark.rknn
-scripts/build_rv1126.sh
-scripts/package_rv1126.sh
+scripts/run_demo.sh --capture-gate
 ```
 
-See [docs/rv1126_deployment.md](docs/rv1126_deployment.md).
+采集负样本时，门控应要求双手完整、居中并保持间距，同时明确阻止双手 OK，避免标签污染。
 
-## Model Format
+## 测试与报告
 
-The C++ build writes plain text model artifacts such as:
-
-```text
-models/ok_hand_numpy_logreg.txt
+```bash
+scripts/test.sh
+scripts/gui_report.sh
+xdg-open reports/gui/index.html
 ```
 
-Python `joblib` / `pickle` artifacts are no longer loaded.
+静态数据与门控模拟报告输出到 `reports/gui/index.html`；实时测试界面由 `scripts/run_demo.sh` 启动。
 
-## Current Migration Notes
-
-- Python package files, pytest tests, `pyproject.toml`, and `requirements.txt` have been removed.
-- C++ unit tests cover features, recognizer stability, capture gate decisions, config parsing, runtime metrics, training,
-  and model save/load.
-- HaGRID JSON conversion is implemented in C++ with the repository's small JSON parser.
-- `double-ok-demo` is now a Qt Widgets dashboard using the same dark operational style as the Allan calibrator tool.
-- The target live result is the previous Python MediaPipe Hands result: real 21-point hand landmarks, skeleton overlay,
-  OK scoring, and capture gate. The RV1126 production backend is expected to be RKNN/RKNPU; the OpenCV detector is only
-  a temporary explicit debug fallback and is not equivalent.
+所有识别与门控阈值集中在 `configs/default.json`。

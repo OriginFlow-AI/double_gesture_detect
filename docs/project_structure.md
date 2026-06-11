@@ -2,6 +2,8 @@
 
 当前工程是 C++/CMake 项目。
 
+目标分层和演进原则见 [architecture.md](architecture.md)。本页描述当前落地文件结构。
+
 ```text
 .
 ├── CMakeLists.txt
@@ -25,7 +27,10 @@ recognizer.hpp/cpp     单手 OK、双手 OK、稳定窗口
 capture_gate.hpp/cpp   姿态、入框、居中、间距、手势门控
 config.hpp/cpp         当前 JSON 配置的 C++ 读取与校验
 camera.hpp/cpp         OpenCV 摄像头打开、重试、设备枚举
+landmark_provider.hpp/cpp hand landmark provider 抽象与当前调试 provider
 runtime.hpp/cpp        FPS、处理延迟
+runtime_pipeline.hpp/cpp 单帧运行流水线、后端选择、运行时装配
+capture_writer.hpp/cpp ready 后保存原始帧和 metadata
 training.hpp/cpp       特征 CSV、分层切分、逻辑回归、指标
 model_io.hpp/cpp       C++ 文本模型保存和加载
 json.hpp/cpp           小型 JSON 解析器，用于 HaGRID 转换
@@ -41,6 +46,7 @@ scripts/convert_hand_landmark_to_rknn.sh
 scripts/package_rv1126.sh
 scripts/run_rv1126.sh
 docs/rv1126_deployment.md
+docs/current_main_contract.md
 ```
 
 命令入口：

@@ -12,5 +12,5 @@ cmake --build "$BUILD_DIR" --target double-ok-gui -j "$JOBS" >/dev/null
 "$BUILD_DIR/double-ok-gui" \
   --config configs/default.json \
   --csv data/processed/hagrid_ok_features.csv \
-  --model models/ok_hand_numpy_logreg.txt \
+  --model models/ok_hand_numpy_logreg.pkl \
   --output reports/gui/index.html

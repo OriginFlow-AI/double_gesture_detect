@@ -32,7 +32,8 @@ RV1126 board run:
   cd double_ok_gate
   scripts/run_rv1126.sh /dev/video0
 
-Capture starts only when both hands are OK and both hands are centered in the field of view.
+Capture starts only when the configured gate is ready: two hands, stable double OK,
+full-frame visibility, centered hands, minimum separation, and pose if enabled.
 EOF
 
 echo "$PACKAGE_DIR"

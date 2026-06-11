@@ -17,7 +17,13 @@ scripts/evaluate_numpy_logreg.sh
 data/processed/hagrid_ok_features.csv
 ```
 
-默认 C++ 模型：
+报告和 `dev_` 内容展示使用的历史模型：
+
+```text
+models/ok_hand_numpy_logreg.pkl
+```
+
+C++ 训练、评估和实时运行使用的文本模型：
 
 ```text
 models/ok_hand_numpy_logreg.txt

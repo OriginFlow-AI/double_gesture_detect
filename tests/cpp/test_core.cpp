@@ -7,13 +7,16 @@
 #include <vector>
 
 #include "double_ok_gesture/capture_gate.hpp"
+#include "double_ok_gesture/capture_writer.hpp"
 #include "double_ok_gesture/config.hpp"
 #include "double_ok_gesture/features.hpp"
 #include "double_ok_gesture/hand_detector.hpp"
 #include "double_ok_gesture/json.hpp"
+#include "double_ok_gesture/landmark_provider.hpp"
 #include "double_ok_gesture/model_io.hpp"
 #include "double_ok_gesture/recognizer.hpp"
 #include "double_ok_gesture/runtime.hpp"
+#include "double_ok_gesture/runtime_pipeline.hpp"
 #include "double_ok_gesture/training.hpp"
 
 namespace {
@@ -205,6 +208,46 @@ void test_runtime_metrics() {
     EXPECT_NEAR(third.processing_ms, 50.0, 1e-9);
 }
 
+void test_landmark_backend_parser() {
+    EXPECT_EQ(double_ok_gesture::landmark_backend_from_string("rknn"), double_ok_gesture::LandmarkBackend::Rknn);
+    EXPECT_EQ(double_ok_gesture::landmark_backend_from_string("mediapipe"), double_ok_gesture::LandmarkBackend::MediaPipe);
+    EXPECT_EQ(
+        double_ok_gesture::landmark_backend_from_string("opencv-heuristic"),
+        double_ok_gesture::LandmarkBackend::OpenCVDebug);
+    EXPECT_EQ(double_ok_gesture::landmark_backend_from_string("none"), double_ok_gesture::LandmarkBackend::None);
+    EXPECT_TRUE(double_ok_gesture::landmark_backend_available_in_current_build(double_ok_gesture::LandmarkBackend::OpenCVDebug));
+    EXPECT_FALSE(double_ok_gesture::landmark_backend_available_in_current_build(double_ok_gesture::LandmarkBackend::Rknn));
+
+    bool threw = false;
+    try {
+        (void)double_ok_gesture::landmark_backend_from_string("debug");
+    } catch (const std::invalid_argument&) {
+        threw = true;
+    }
+    EXPECT_TRUE(threw);
+}
+
+void test_null_landmark_provider_returns_empty() {
+    double_ok_gesture::NullHandLandmarkProvider provider("rknn");
+    const cv::Mat frame(16, 16, CV_8UC3, cv::Scalar(0, 0, 0));
+    EXPECT_EQ(provider.info().name, std::string("rknn"));
+    EXPECT_FALSE(provider.info().available);
+    EXPECT_TRUE(provider.detect(frame).empty());
+}
+
+void test_capture_writer_skips_when_not_ready() {
+    double_ok_gesture::DataCaptureConfig config;
+    config.output_dir = std::filesystem::temp_directory_path() / "double_ok_cpp_capture_writer";
+    double_ok_gesture::CaptureWriter writer(config);
+    const cv::Mat frame(16, 16, CV_8UC3, cv::Scalar(0, 0, 0));
+    const auto result = make_result({make_hand(0.4, 0.5), make_hand(0.6, 0.5)});
+    double_ok_gesture::CaptureGateDecision decision;
+    decision.ready = false;
+
+    EXPECT_FALSE(writer.maybe_save(frame, result, decision, "opencv-heuristic").has_value());
+    EXPECT_EQ(writer.saved_count(), 0);
+}
+
 void test_config_and_pose_loading() {
     const auto path = std::filesystem::temp_directory_path() / "double_ok_cpp_config.json";
     {
@@ -270,6 +313,9 @@ int main() {
         {"recognizer_stability", test_recognizer_stability},
         {"opencv_hand_detector_finds_skin_colored_regions", test_opencv_hand_detector_finds_skin_colored_regions},
         {"runtime_metrics", test_runtime_metrics},
+        {"landmark_backend_parser", test_landmark_backend_parser},
+        {"null_landmark_provider_returns_empty", test_null_landmark_provider_returns_empty},
+        {"capture_writer_skips_when_not_ready", test_capture_writer_skips_when_not_ready},
         {"config_and_pose_loading", test_config_and_pose_loading},
         {"json_parser_reads_hagrid_shape", test_json_parser_reads_hagrid_shape},
         {"training_and_model_io", test_training_and_model_io},

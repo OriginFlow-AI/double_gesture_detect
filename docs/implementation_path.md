@@ -1,6 +1,6 @@
 # Implementation Path
 
-本项目已从 Python 迁移到 C++。
+本项目已从 Python 迁移到 C++。当前 `main` 的实现保留 C++ 主线；用户可见功能、门控流程和报告内容以 `dev_` 的双手 OK 采集门控为主。
 
 ## 已完成
 
@@ -29,3 +29,4 @@ scripts/run_demo.sh /dev/video0
 3. 在板端验证 USB UVC 摄像头、FPS、延迟、采集保存路径。
 4. 针对眼镜视角采集样本校准检测阈值、OK 阈值和中心区域。
 5. 增加 CI、覆盖率和真实性能 smoke test。
+6. 在接入真实 21 点 hand-landmark provider 前，继续明确区分生产目标后端和 `opencv-heuristic` 调试后端。

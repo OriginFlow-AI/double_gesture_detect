@@ -13,15 +13,18 @@ pkg_check_modules(QT5_GUI REQUIRED Qt5Widgets Qt5Test Qt5OpenGL)
 
 add_library(double_ok_gesture_core
     src/camera.cpp
+    src/capture_writer.cpp
     src/capture_gate.cpp
     src/config.cpp
     src/features.cpp
     src/hand_detector.cpp
     src/json.cpp
+    src/landmark_provider.cpp
     src/live_ui.cpp
     src/model_io.cpp
     src/recognizer.cpp
     src/runtime.cpp
+    src/runtime_pipeline.cpp
     src/training.cpp
 )
 
