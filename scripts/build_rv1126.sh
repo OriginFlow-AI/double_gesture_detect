@@ -12,7 +12,9 @@ JOBS="${JOBS:-2}"
 
 cmake -S . -B "$BUILD_DIR" \
   -DCMAKE_BUILD_TYPE="$CMAKE_BUILD_TYPE" \
+  -DDOUBLE_OK_BUILD_QT_DEMO=OFF \
+  -DDOUBLE_OK_BUILD_CAPTURE_TOOL=OFF \
   -DCMAKE_TOOLCHAIN_FILE=cmake/toolchains/rv1126-linux-gnueabihf.cmake \
   -DCMAKE_PREFIX_PATH="$RV1126_SYSROOT/usr;$RV1126_SYSROOT/usr/local"
 
-cmake --build "$BUILD_DIR" --target double-ok-demo double-ok-camera-check -j "$JOBS"
+cmake --build "$BUILD_DIR" --target double-ok-headless double-ok-camera-check -j "$JOBS"

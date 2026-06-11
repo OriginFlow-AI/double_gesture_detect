@@ -40,7 +40,7 @@ ui
 report
   data summary / html renderer
 apps
-  demo / gui_report / camera_check / train / evaluate
+  demo_app / demo / gui_report / camera_check / train / evaluate
 scripts
   build / run / data / deploy helpers
 ```
@@ -83,16 +83,25 @@ runtime:
   src/runtime.cpp
   src/runtime_pipeline.cpp
 
+app:
+  include/double_ok_gesture/demo_app.hpp
+  src/demo_app.cpp
+  apps/headless.cpp
+
 capture:
   include/double_ok_gesture/capture_writer.hpp
   src/capture_writer.cpp
 
 ui:
   include/double_ok_gesture/live_ui.hpp
+  include/double_ok_gesture/qt_dashboard.hpp
   src/live_ui.cpp
+  src/qt_dashboard.cpp
   apps/demo.cpp
 
 report:
+  include/double_ok_gesture/report.hpp
+  src/report.cpp
   apps/gui_report.cpp
   reports/gui/index.html
 ```
@@ -103,7 +112,8 @@ report:
 
 ```text
 rknn              生产目标后端，面向 RV1126/RKNPU，等待 SDK 和模型接入
-mediapipe         语义目标后端，用于 PC 对齐验证，等待 C++ provider 接入
+mediapipe         桌面对齐后端，C++ provider 调用 Python sidecar 输出真实 21 点
+landmarks-json    外部 21 点 JSON 输入，用于验证显示链路和后端契约
 opencv-heuristic  本机调试候选检测，只用于试看 GUI 和相机链路
 none              关闭检测
 ```
@@ -127,22 +137,25 @@ C++ 主线不得直接加载 pickle/joblib。
 ## 分阶段落地
 
 1. 统一契约、架构文档、脚本和 README。
-2. 从 `apps/demo.cpp` 抽出 capture writer、runtime bundle 和单帧 pipeline。
-3. 增加 `HandLandmarkProvider` 抽象，统一 `rknn / mediapipe / opencv-heuristic / none`。
-4. 拆分测试：features、recognizer、gate、config、provider、training、runtime。
-5. 拆分 CMake target，便于 RV1126 裁剪和 SDK 适配。
+2. 从 `apps/demo.cpp` 抽出 capture writer、runtime bundle、单帧 pipeline、CLI/headless 和 Qt dashboard。
+3. 增加 `HandLandmarkProvider` 抽象，统一 `rknn / mediapipe / landmarks-json / opencv-heuristic / none`。
+4. 拆分测试：features、recognizer、gate、config、provider、training、runtime、report、demo app。
+5. 继续拆分 CMake target，便于 RV1126 裁剪和 SDK 适配。
 6. 接入 RKNN 后端和板端验收闭环。
 
 ## 验收矩阵
 
 ```bash
 bash -n scripts/*.sh
-cmake --build build --target double-ok-demo double-ok-gui double_ok_gesture_tests -j 2
+cmake --build build --target double-ok-demo double-ok-headless double-ok-gui double_ok_gesture_tests -j 2
 ctest --test-dir build --output-on-failure
 scripts/gui_report.sh
 scripts/check_camera.sh
+scripts/run_demo.sh --headless --max-frames 1 --landmark-backend mediapipe
 scripts/run_demo.sh --headless --max-frames 1 --landmark-backend opencv-heuristic
 scripts/run_demo.sh --headless --max-frames 1 --landmark-backend none
+cmake -S . -B build-noqt -DCMAKE_BUILD_TYPE=Release -DDOUBLE_OK_BUILD_QT_DEMO=OFF -DDOUBLE_OK_BUILD_CAPTURE_TOOL=OFF
+cmake --build build-noqt --target double-ok-headless double-ok-camera-check double_ok_gesture_tests -j 2
 git diff --check
 ```
 

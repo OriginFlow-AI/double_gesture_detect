@@ -7,9 +7,9 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
 find_package(OpenCV REQUIRED COMPONENTS core imgproc imgcodecs videoio highgui)
-find_package(Qt5 5.12 REQUIRED COMPONENTS Widgets)
-find_package(PkgConfig REQUIRED)
-pkg_check_modules(QT5_GUI REQUIRED Qt5Widgets Qt5Test Qt5OpenGL)
+
+option(DOUBLE_OK_BUILD_QT_DEMO "Build the Qt live dashboard demo" ON)
+option(DOUBLE_OK_BUILD_CAPTURE_TOOL "Build the desktop OpenCV HighGUI capture tool" ON)
 
 add_library(double_ok_gesture_core
     src/camera.cpp
@@ -23,6 +23,7 @@ add_library(double_ok_gesture_core
     src/live_ui.cpp
     src/model_io.cpp
     src/recognizer.cpp
+    src/report.cpp
     src/runtime.cpp
     src/runtime_pipeline.cpp
     src/training.cpp
@@ -44,30 +45,48 @@ target_link_libraries(double_ok_gesture_core
 
 target_compile_options(double_ok_gesture_core PRIVATE -Wall -Wextra -Wpedantic)
 
+add_library(double_ok_gesture_demo_app
+    src/demo_app.cpp
+)
+
+target_link_libraries(double_ok_gesture_demo_app PUBLIC double_ok_gesture_core)
+target_compile_options(double_ok_gesture_demo_app PRIVATE -Wall -Wextra -Wpedantic)
+
 function(add_double_ok_executable target source)
     add_executable(${target} ${source})
     target_link_libraries(${target} PRIVATE double_ok_gesture_core)
     target_compile_options(${target} PRIVATE -Wall -Wextra -Wpedantic)
 endfunction()
 
-add_double_ok_executable(double-ok-demo apps/demo.cpp)
 add_double_ok_executable(double-ok-camera-check apps/camera_check.cpp)
-add_double_ok_executable(double-ok-capture apps/capture_samples.cpp)
 add_double_ok_executable(double-ok-eval apps/evaluate.cpp)
 add_double_ok_executable(double-ok-gui apps/gui_report.cpp)
+add_double_ok_executable(double-ok-headless apps/headless.cpp)
 add_double_ok_executable(double-ok-prepare-hagrid apps/prepare_hagrid.cpp)
 add_double_ok_executable(double-ok-train apps/train.cpp)
 
-target_compile_definitions(double-ok-demo PRIVATE QT_NO_KEYWORDS)
-target_compile_options(double-ok-demo PRIVATE -fPIC)
-target_link_libraries(double-ok-demo PRIVATE Qt5::Widgets)
+target_link_libraries(double-ok-headless PRIVATE double_ok_gesture_demo_app)
 
-target_include_directories(double-ok-capture PRIVATE ${QT5_GUI_INCLUDE_DIRS})
-target_compile_options(double-ok-capture PRIVATE ${QT5_GUI_CFLAGS_OTHER})
-target_link_libraries(double-ok-capture PRIVATE opencv_highgui ${QT5_GUI_LIBRARIES})
+if(DOUBLE_OK_BUILD_QT_DEMO)
+    find_package(Qt5 5.12 REQUIRED COMPONENTS Widgets)
+    add_double_ok_executable(double-ok-demo apps/demo.cpp)
+    target_sources(double-ok-demo PRIVATE src/qt_dashboard.cpp)
+    target_compile_definitions(double-ok-demo PRIVATE QT_NO_KEYWORDS)
+    target_compile_options(double-ok-demo PRIVATE -fPIC)
+    target_link_libraries(double-ok-demo PRIVATE double_ok_gesture_demo_app Qt5::Widgets)
+endif()
+
+if(DOUBLE_OK_BUILD_CAPTURE_TOOL)
+    find_package(PkgConfig REQUIRED)
+    pkg_check_modules(QT5_GUI REQUIRED Qt5Widgets Qt5Test Qt5OpenGL)
+    add_double_ok_executable(double-ok-capture apps/capture_samples.cpp)
+    target_include_directories(double-ok-capture PRIVATE ${QT5_GUI_INCLUDE_DIRS})
+    target_compile_options(double-ok-capture PRIVATE ${QT5_GUI_CFLAGS_OTHER})
+    target_link_libraries(double-ok-capture PRIVATE opencv_highgui ${QT5_GUI_LIBRARIES})
+endif()
 
 enable_testing()
 add_executable(double_ok_gesture_tests tests/cpp/test_core.cpp)
-target_link_libraries(double_ok_gesture_tests PRIVATE double_ok_gesture_core)
+target_link_libraries(double_ok_gesture_tests PRIVATE double_ok_gesture_core double_ok_gesture_demo_app)
 target_compile_options(double_ok_gesture_tests PRIVATE -Wall -Wextra -Wpedantic)
 add_test(NAME double_ok_gesture_tests COMMAND double_ok_gesture_tests)

@@ -2,7 +2,7 @@
 
 ## Runtime Goal
 
-The board runtime must be C++ only:
+The board runtime must be C++ only and does not require Qt:
 
 ```text
 USB UVC camera
@@ -51,6 +51,8 @@ export RV1126_TOOLCHAIN_PREFIX=arm-linux-gnueabihf-
 export RV1126_SYSROOT=/path/to/rv1126/sysroot
 scripts/build_rv1126.sh
 ```
+
+The script configures `DOUBLE_OK_BUILD_QT_DEMO=OFF` and builds the non-Qt `double-ok-headless` runtime for the board.
 
 ## Package
 

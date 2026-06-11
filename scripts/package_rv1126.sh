@@ -7,8 +7,8 @@ BUILD_DIR="${BUILD_DIR:-build-rv1126}"
 PACKAGE_DIR="${PACKAGE_DIR:-deploy/rv1126/double_ok_gate}"
 RKNN_MODEL="${RKNN_MODEL:-models/hand_landmark.rknn}"
 
-if [[ ! -x "$BUILD_DIR/double-ok-demo" ]]; then
-  echo "Missing $BUILD_DIR/double-ok-demo. Run scripts/build_rv1126.sh first." >&2
+if [[ ! -x "$BUILD_DIR/double-ok-headless" ]]; then
+  echo "Missing $BUILD_DIR/double-ok-headless. Run scripts/build_rv1126.sh first." >&2
   exit 1
 fi
 
@@ -20,7 +20,7 @@ fi
 rm -rf "$PACKAGE_DIR"
 mkdir -p "$PACKAGE_DIR/bin" "$PACKAGE_DIR/configs" "$PACKAGE_DIR/models" "$PACKAGE_DIR/scripts"
 
-cp "$BUILD_DIR/double-ok-demo" "$PACKAGE_DIR/bin/"
+cp "$BUILD_DIR/double-ok-headless" "$PACKAGE_DIR/bin/"
 cp "$BUILD_DIR/double-ok-camera-check" "$PACKAGE_DIR/bin/"
 cp configs/rv1126_uvc.json "$PACKAGE_DIR/configs/"
 cp "$RKNN_MODEL" "$PACKAGE_DIR/models/"

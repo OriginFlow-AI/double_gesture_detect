@@ -243,13 +243,11 @@ void draw_hand_tracking(cv::Mat& frame_bgr, const DoubleOKResult& result) {
     const cv::Size size = frame_bgr.size();
     for (const auto& hand : result.hands) {
         const cv::Scalar color = ok_color(hand.is_ok);
-        const std::array<cv::Point, 21> points = landmark_pixels(hand, size);
         if (hand.landmarks_estimated) {
             const cv::Rect box = hand_box(hand, size);
-            draw_landmark_skeleton(frame_bgr, points, cv::Scalar(80, 210, 255), true);
             corner_box(frame_bgr, box, color, 3);
-            const std::string label = hand.handedness + " candidate " + fixed(hand.ok_score * 100.0, 1) + "%";
-            const int label_width = std::max(190, cv::getTextSize(label, cv::FONT_HERSHEY_SIMPLEX, 0.48, 1, nullptr).width + 24);
+            const std::string label = hand.handedness + " box " + fixed(hand.ok_score * 100.0, 1) + "%";
+            const int label_width = std::max(178, cv::getTextSize(label, cv::FONT_HERSHEY_SIMPLEX, 0.48, 1, nullptr).width + 24);
             const int label_y = std::max(8, box.y - 34);
             rounded_rect(frame_bgr, {box.x, label_y, label_width, 28}, cv::Scalar(32, 32, 32), 6);
             put_text(
@@ -261,13 +259,14 @@ void draw_hand_tracking(cv::Mat& frame_bgr, const DoubleOKResult& result) {
                 1);
             put_text(
                 frame_bgr,
-                "OpenCV heuristic, not MediaPipe landmarks",
+                "OpenCV heuristic box, no 21-point landmarks",
                 {box.x, std::min(size.height - 10, box.y + box.height + 22)},
                 0.42,
                 cv::Scalar(80, 210, 255),
                 1);
             continue;
         }
+        const std::array<cv::Point, 21> points = landmark_pixels(hand, size);
         draw_landmark_skeleton(frame_bgr, points, color, false);
         const cv::Rect box = hand_box(hand, size);
         corner_box(frame_bgr, box, color, 3);

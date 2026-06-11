@@ -20,6 +20,7 @@ namespace double_ok_gesture {
 enum class LandmarkBackend {
     Rknn,
     MediaPipe,
+    LandmarksJson,
     OpenCVDebug,
     None,
 };
@@ -34,6 +35,7 @@ struct RuntimeOptions {
     std::optional<double> capture_cooldown_sec;
     bool disable_auto_capture = false;
     LandmarkBackend landmark_backend = LandmarkBackend::Rknn;
+    std::optional<std::filesystem::path> landmarks_json_path;
 };
 
 struct RuntimeBundle {

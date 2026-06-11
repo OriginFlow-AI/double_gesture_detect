@@ -5,6 +5,7 @@ __pycache__/
 .mypy_cache/
 *.egg-info/
 build/
+build-*/
 data/raw/*
 data/processed/*
 models/*

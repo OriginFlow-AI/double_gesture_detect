@@ -1,5 +1,7 @@
 #pragma once
 
+#include <filesystem>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -43,6 +45,34 @@ public:
 
 private:
     OpenCVHandDetector detector_;
+};
+
+class JsonHandLandmarkProvider : public HandLandmarkProvider {
+public:
+    explicit JsonHandLandmarkProvider(std::filesystem::path path);
+
+    LandmarkProviderInfo info() const override;
+    std::vector<DetectedHand> detect(const cv::Mat& frame_bgr) override;
+
+private:
+    std::filesystem::path path_;
+};
+
+class MediaPipePythonLandmarkProvider : public HandLandmarkProvider {
+public:
+    MediaPipePythonLandmarkProvider();
+    MediaPipePythonLandmarkProvider(std::filesystem::path python_path, std::filesystem::path script_path);
+    ~MediaPipePythonLandmarkProvider() override;
+
+    MediaPipePythonLandmarkProvider(const MediaPipePythonLandmarkProvider&) = delete;
+    MediaPipePythonLandmarkProvider& operator=(const MediaPipePythonLandmarkProvider&) = delete;
+
+    LandmarkProviderInfo info() const override;
+    std::vector<DetectedHand> detect(const cv::Mat& frame_bgr) override;
+
+private:
+    struct Impl;
+    std::unique_ptr<Impl> impl_;
 };
 
 }  // namespace double_ok_gesture

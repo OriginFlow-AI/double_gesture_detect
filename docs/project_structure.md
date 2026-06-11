@@ -31,10 +31,16 @@ landmark_provider.hpp/cpp hand landmark provider 抽象与当前调试 provider
 runtime.hpp/cpp        FPS、处理延迟
 runtime_pipeline.hpp/cpp 单帧运行流水线、后端选择、运行时装配
 capture_writer.hpp/cpp ready 后保存原始帧和 metadata
+demo_app.hpp/cpp      double-ok-demo 的 CLI、headless smoke 和运行选项映射
+qt_dashboard.hpp/cpp Qt 实时 dashboard 控件、状态刷新、截图和事件日志
+report.hpp/cpp        静态 GUI 报告数据扫描与 HTML 渲染
 training.hpp/cpp       特征 CSV、分层切分、逻辑回归、指标
 model_io.hpp/cpp       C++ 文本模型保存和加载
 json.hpp/cpp           小型 JSON 解析器，用于 HaGRID 转换
 ```
+
+`src/demo_app.cpp` 编成非 Qt 的 `double_ok_gesture_demo_app` 小库，供 demo 和测试复用。`src/qt_dashboard.cpp` 只编进 `double-ok-demo`，不进入 `double_ok_gesture_core`，保证核心库继续不依赖 Qt。
+`double-ok-headless` 是无 Qt 运行入口，供板端和最小运行环境使用；桌面 `double-ok-demo` 默认保留 Qt dashboard。
 
 RV1126 相关：
 
@@ -53,6 +59,7 @@ docs/current_main_contract.md
 
 ```text
 double-ok-demo
+double-ok-headless
 double-ok-camera-check
 double-ok-capture
 double-ok-prepare-hagrid

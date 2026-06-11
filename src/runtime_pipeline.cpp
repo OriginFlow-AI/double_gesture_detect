@@ -14,13 +14,16 @@ LandmarkBackend landmark_backend_from_string(const std::string& value) {
     if (value == "mediapipe") {
         return LandmarkBackend::MediaPipe;
     }
+    if (value == "landmarks-json") {
+        return LandmarkBackend::LandmarksJson;
+    }
     if (value == "opencv-heuristic") {
         return LandmarkBackend::OpenCVDebug;
     }
     if (value == "none") {
         return LandmarkBackend::None;
     }
-    throw std::invalid_argument("--landmark-backend must be one of: rknn, mediapipe, opencv-heuristic, none");
+    throw std::invalid_argument("--landmark-backend must be one of: rknn, mediapipe, landmarks-json, opencv-heuristic, none");
 }
 
 const char* landmark_backend_value(LandmarkBackend backend) {
@@ -29,6 +32,8 @@ const char* landmark_backend_value(LandmarkBackend backend) {
             return "rknn";
         case LandmarkBackend::MediaPipe:
             return "mediapipe";
+        case LandmarkBackend::LandmarksJson:
+            return "landmarks-json";
         case LandmarkBackend::OpenCVDebug:
             return "opencv-heuristic";
         case LandmarkBackend::None:
@@ -38,16 +43,27 @@ const char* landmark_backend_value(LandmarkBackend backend) {
 }
 
 bool landmark_backend_available_in_current_build(LandmarkBackend backend) {
-    return backend == LandmarkBackend::OpenCVDebug || backend == LandmarkBackend::None;
+    return backend == LandmarkBackend::MediaPipe || backend == LandmarkBackend::LandmarksJson ||
+           backend == LandmarkBackend::OpenCVDebug || backend == LandmarkBackend::None;
 }
 
-std::unique_ptr<HandLandmarkProvider> make_landmark_provider(LandmarkBackend backend, const RuntimeConfig& config) {
+std::unique_ptr<HandLandmarkProvider> make_landmark_provider(const RuntimeOptions& options, const RuntimeConfig& config) {
+    const LandmarkBackend backend = options.landmark_backend;
+    if (backend == LandmarkBackend::LandmarksJson) {
+        if (!options.landmarks_json_path) {
+            throw std::invalid_argument("--landmarks-json is required with --landmark-backend landmarks-json");
+        }
+        return std::make_unique<JsonHandLandmarkProvider>(*options.landmarks_json_path);
+    }
     if (backend == LandmarkBackend::OpenCVDebug) {
         return std::make_unique<OpenCVDebugLandmarkProvider>(HandDetectorConfig{
             config.recognizer.max_num_hands,
             0.006,
             3.0,
         });
+    }
+    if (backend == LandmarkBackend::MediaPipe) {
+        return std::make_unique<MediaPipePythonLandmarkProvider>();
     }
     return std::make_unique<NullHandLandmarkProvider>(landmark_backend_value(backend), backend == LandmarkBackend::None);
 }
@@ -79,14 +95,15 @@ RuntimeBundle make_runtime(const RuntimeOptions& options) {
         static_cast<std::size_t>(runtime_config.recognizer.stable_window),
         static_cast<std::size_t>(runtime_config.recognizer.stable_min_positive));
 
-    auto landmark_provider = make_landmark_provider(options.landmark_backend, runtime_config);
+    auto camera = open_camera(options.camera);
+    auto landmark_provider = make_landmark_provider(options, runtime_config);
 
     return {
         runtime_config,
         classifier,
         std::move(recognizer),
         std::move(landmark_provider),
-        open_camera(options.camera),
+        std::move(camera),
         RuntimeMetrics(),
         options.landmark_backend,
     };

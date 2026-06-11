@@ -10,7 +10,7 @@ fi
 
 export LD_LIBRARY_PATH="${LD_LIBRARY_PATH:-}:$(pwd)/lib"
 
-exec bin/double-ok-demo \
+exec bin/double-ok-headless \
   --camera "$CAMERA_SOURCE" \
   --config configs/rv1126_uvc.json \
   --capture-gate \
