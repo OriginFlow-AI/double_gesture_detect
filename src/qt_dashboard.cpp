@@ -33,7 +33,7 @@ QImage mat_to_image(const cv::Mat& bgr) {
 
 QString camera_label(const CameraStream& camera) {
     const auto& info = camera.info();
-    return QStringLiteral("%1 · %2x%3 · %4 FPS · %5")
+    return QStringLiteral("%1 | %2x%3 | %4 帧/秒 | %5")
         .arg(QString::fromStdString(info.source))
         .arg(info.width)
         .arg(info.height)
@@ -47,17 +47,17 @@ std::string model_label_for(const QtDashboardOptions& options) {
     }
     switch (options.landmark_backend) {
         case LandmarkBackend::Rknn:
-            return "rknn hand landmarks";
+            return "RKNN 手部关键点";
         case LandmarkBackend::OpenCVDebug:
-            return "opencv debug boxes";
+            return "OpenCV 调试框";
         case LandmarkBackend::None:
-            return "landmarks disabled";
+            return "未启用关键点";
         case LandmarkBackend::MediaPipe:
-            return "mediapipe python 21pt";
+            return "MediaPipe 21 点";
         case LandmarkBackend::LandmarksJson:
-            return "landmarks-json 21pt";
+            return "Landmarks JSON 21 点";
     }
-    return "geometry rules";
+    return "几何规则";
 }
 
 }  // namespace
@@ -130,6 +130,16 @@ struct QtDashboard::Impl {
         QObject::connect(&timer, &QTimer::timeout, [&]() { update_frame(); });
     }
 
+    void present_dashboard(const cv::Mat& dashboard) {
+        last_rendered_frame = dashboard.clone();
+        const QImage image = mat_to_image(dashboard);
+        const QSize target_size = video_label->size().isEmpty() ? QSize(options.width, options.height) : video_label->size();
+        video_label->setPixmap(QPixmap::fromImage(image).scaled(
+            target_size,
+            Qt::KeepAspectRatio,
+            Qt::SmoothTransformation));
+    }
+
     void save_screenshot() {
         if (last_rendered_frame.empty()) {
             return;
@@ -146,6 +156,18 @@ struct QtDashboard::Impl {
     void update_frame() {
         auto frame = runtime.camera.read();
         if (!frame) {
+            if (last_rendered_frame.empty()) {
+                present_dashboard(render_dashboard(
+                    cv::Mat{},
+                    DoubleOKResult{},
+                    std::nullopt,
+                    RuntimeSnapshot{0.0, 0.0, 0},
+                    camera_label(runtime.camera).toStdString(),
+                    options.target_fps,
+                    model_label_for(options),
+                    options.width,
+                    options.height));
+            }
             return;
         }
         const auto frame_result = process_runtime_frame(runtime, *frame, process_frame_options());
@@ -178,13 +200,7 @@ struct QtDashboard::Impl {
             model_label_for(options),
             options.width,
             options.height);
-        last_rendered_frame = dashboard.clone();
-        const QImage image = mat_to_image(dashboard);
-        const QSize target_size = video_label->size().isEmpty() ? QSize(options.width, options.height) : video_label->size();
-        video_label->setPixmap(QPixmap::fromImage(image).scaled(
-            target_size,
-            Qt::KeepAspectRatio,
-            Qt::SmoothTransformation));
+        present_dashboard(dashboard);
 
         if (options.max_frames > 0 && frames >= options.max_frames) {
             application.quit();

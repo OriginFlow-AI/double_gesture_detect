@@ -43,6 +43,12 @@ target_link_libraries(double_ok_gesture_core
         opencv_videoio
 )
 
+find_library(OPENCV_FREETYPE_LIBRARY NAMES opencv_freetype HINTS ${OpenCV_LIBRARY_DIRS})
+if(OPENCV_FREETYPE_LIBRARY)
+    target_compile_definitions(double_ok_gesture_core PRIVATE DOUBLE_OK_HAS_OPENCV_FREETYPE=1)
+    target_link_libraries(double_ok_gesture_core PUBLIC ${OPENCV_FREETYPE_LIBRARY})
+endif()
+
 target_compile_options(double_ok_gesture_core PRIVATE -Wall -Wextra -Wpedantic)
 
 add_library(double_ok_gesture_demo_app

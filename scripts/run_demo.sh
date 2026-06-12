@@ -19,28 +19,37 @@ for arg in "$@"; do
   fi
 done
 
-detect_default_camera() {
-  local candidate=""
-  while IFS= read -r candidate; do
-    if [[ -e "$candidate" ]]; then
-      printf '%s' "$candidate"
-      return
-    fi
-  done < <(
-    for node in /sys/class/video4linux/video*; do
-      [[ -r "$node/name" ]] || continue
-      if grep -qi 'Orbbec.*Gemini' "$node/name"; then
-        printf '/dev/%s\n' "$(basename "$node")"
-      fi
-    done | sort -V
-  )
-  while IFS= read -r candidate; do
-    if [[ -e "$candidate" ]]; then
-      printf '%s' "$candidate"
-      return
-    fi
-  done < <(printf '%s\n' /dev/video* 2>/dev/null | sort -V)
-  printf '%s' "/dev/video0"
+video_devices() {
+  { compgen -G '/dev/video*' || true; } | sort -V
+}
+
+device_name() {
+  local device="$1"
+  local node="/sys/class/video4linux/$(basename "$device")/name"
+  [[ -r "$node" ]] && cat "$node"
+}
+
+is_orbbec_device() {
+  device_name "$1" | grep -qi 'Orbbec.*Gemini'
+}
+
+has_color_format() {
+  local device="$1"
+  command -v v4l2-ctl >/dev/null 2>&1 || return 0
+  v4l2-ctl -d "$device" --list-formats 2>/dev/null | grep -Eq "'(MJPG|YUYV|UYVY|RGB3|BGR3)'"
+}
+
+camera_candidates() {
+  local device=""
+  while IFS= read -r device; do
+    [[ -e "$device" ]] || continue
+    is_orbbec_device "$device" && has_color_format "$device" && printf '%s\n' "$device"
+  done < <(video_devices)
+  while IFS= read -r device; do
+    [[ -e "$device" ]] || continue
+    is_orbbec_device "$device" && continue
+    has_color_format "$device" && printf '%s\n' "$device"
+  done < <(video_devices)
 }
 
 if [[ "$LIST_CAMERAS" -eq 1 ]]; then
@@ -49,16 +58,10 @@ elif [[ $# -gt 0 && "$1" != --* ]]; then
   CAMERA_SOURCE="$1"
   EXPLICIT_CAMERA=1
   shift
-else
-  CAMERA_SOURCE=""
 fi
 
 cmake -S . -B "$BUILD_DIR" -DCMAKE_BUILD_TYPE="$CMAKE_BUILD_TYPE" >/dev/null
 cmake --build "$BUILD_DIR" --target double-ok-demo -j "$JOBS" >/dev/null
-
-if [[ "$LIST_CAMERAS" -eq 0 && "$EXPLICIT_CAMERA" -eq 0 ]]; then
-  CAMERA_SOURCE="$(detect_default_camera)"
-fi
 
 clean_ld_library_path() {
   local cleaned=""
@@ -92,34 +95,64 @@ clean_qt_plugin_path() {
 SYSTEM_QT_PLUGIN_PATH="${SYSTEM_QT_PLUGIN_PATH:-/usr/lib/x86_64-linux-gnu/qt5/plugins}"
 SYSTEM_QT_PLATFORM_PLUGIN_PATH="${SYSTEM_QT_PLATFORM_PLUGIN_PATH:-$SYSTEM_QT_PLUGIN_PATH/platforms}"
 
-if [[ "$LIST_CAMERAS" -eq 1 ]]; then
-  DEMO_ARGS=(--list-cameras)
-else
-  DEMO_ARGS=(
-    --camera "$CAMERA_SOURCE" \
-    --config configs/default.json \
-    --capture-gate
-  )
-
-  if [[ -f models/ok_hand_numpy_logreg.txt ]]; then
-    DEMO_ARGS+=(--model models/ok_hand_numpy_logreg.txt)
-  else
-    echo "models/ok_hand_numpy_logreg.txt not found; using geometry rules." >&2
-  fi
-  if [[ "$HAS_LANDMARK_BACKEND" -eq 0 ]]; then
-    if [[ -x .venv/bin/python && -f scripts/mediapipe_landmark_server.py ]]; then
-      DEMO_ARGS+=(--landmark-backend mediapipe)
-    else
-      echo "MediaPipe sidecar not found; using OpenCV heuristic boxes without 21-point landmarks." >&2
-      DEMO_ARGS+=(--landmark-backend opencv-heuristic)
-    fi
-  fi
-fi
-
 QT_PLUGIN_PATH="$(clean_qt_plugin_path "${QT_PLUGIN_PATH:-}")"
 QT_PLUGIN_PATH="${QT_PLUGIN_PATH:+$QT_PLUGIN_PATH:}$SYSTEM_QT_PLUGIN_PATH"
 
-LD_LIBRARY_PATH="$(clean_ld_library_path)" \
-QT_PLUGIN_PATH="$QT_PLUGIN_PATH" \
-QT_QPA_PLATFORM_PLUGIN_PATH="$SYSTEM_QT_PLATFORM_PLUGIN_PATH" \
-"$BUILD_DIR/double-ok-demo" "${DEMO_ARGS[@]}" "$@"
+run_double_ok_demo() {
+  LD_LIBRARY_PATH="$(clean_ld_library_path)" \
+  QT_PLUGIN_PATH="$QT_PLUGIN_PATH" \
+  QT_QPA_PLATFORM_PLUGIN_PATH="$SYSTEM_QT_PLATFORM_PLUGIN_PATH" \
+  "$BUILD_DIR/double-ok-demo" "$@"
+}
+
+if [[ "$LIST_CAMERAS" -eq 1 ]]; then
+  run_double_ok_demo --list-cameras "$@"
+  exit $?
+fi
+
+MODEL_ARGS=()
+if [[ -f models/ok_hand_numpy_logreg.txt ]]; then
+  MODEL_ARGS+=(--model models/ok_hand_numpy_logreg.txt)
+else
+  echo "models/ok_hand_numpy_logreg.txt not found; using geometry rules." >&2
+fi
+
+BACKEND_ARGS=()
+if [[ "$HAS_LANDMARK_BACKEND" -eq 0 ]]; then
+  if [[ -x .venv/bin/python && -f scripts/mediapipe_landmark_server.py ]]; then
+    BACKEND_ARGS+=(--landmark-backend mediapipe)
+  else
+    echo "MediaPipe sidecar not found; using OpenCV heuristic boxes without 21-point landmarks." >&2
+    BACKEND_ARGS+=(--landmark-backend opencv-heuristic)
+  fi
+fi
+
+demo_args_for_camera() {
+  local camera_source="$1"
+  DEMO_ARGS=(
+    --camera "$camera_source"
+    --config configs/default.json
+    --capture-gate
+    "${MODEL_ARGS[@]}"
+    "${BACKEND_ARGS[@]}"
+  )
+}
+
+if [[ "$EXPLICIT_CAMERA" -eq 1 ]]; then
+  demo_args_for_camera "$CAMERA_SOURCE"
+  run_double_ok_demo "${DEMO_ARGS[@]}" "$@"
+  exit $?
+fi
+
+status=1
+while IFS= read -r CAMERA_SOURCE; do
+  [[ -e "$CAMERA_SOURCE" ]] || continue
+  demo_args_for_camera "$CAMERA_SOURCE"
+  if run_double_ok_demo "${DEMO_ARGS[@]}" "$@"; then
+    exit 0
+  fi
+  status=$?
+  echo "Camera $CAMERA_SOURCE failed; trying next video device." >&2
+done < <(camera_candidates)
+
+exit "$status"

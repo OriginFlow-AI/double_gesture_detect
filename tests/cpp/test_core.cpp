@@ -223,6 +223,67 @@ void test_estimated_hands_do_not_draw_fake_keypoint_skeleton() {
     EXPECT_EQ(static_cast<int>(center[2]), 0);
 }
 
+void expect_dashboard_content(const cv::Mat& dashboard, int width, int height) {
+    EXPECT_FALSE(dashboard.empty());
+    EXPECT_EQ(dashboard.cols, width);
+    EXPECT_EQ(dashboard.rows, height);
+    EXPECT_EQ(dashboard.type(), CV_8UC3);
+
+    cv::Mat gray;
+    cv::cvtColor(dashboard, gray, cv::COLOR_BGR2GRAY);
+    cv::Scalar mean;
+    cv::Scalar stddev;
+    cv::meanStdDev(gray, mean, stddev);
+    EXPECT_TRUE(mean[0] > 10.0);
+    EXPECT_TRUE(stddev[0] > 5.0);
+}
+
+void test_dashboard_renders_compact_and_regular_layouts() {
+    cv::Mat frame(480, 640, CV_8UC3, cv::Scalar(38, 44, 52));
+    cv::rectangle(frame, {80, 80}, {560, 400}, cv::Scalar(68, 86, 112), -1, cv::LINE_AA);
+    cv::line(frame, {0, 240}, {640, 240}, cv::Scalar(120, 130, 145), 2, cv::LINE_AA);
+
+    const auto result = make_result({make_hand(0.4, 0.5), make_hand(0.6, 0.5)});
+    const auto decision = double_ok_gesture::evaluate_capture_gate(result);
+    const double_ok_gesture::RuntimeSnapshot snapshot{28.4, 11.7, 42};
+
+    const auto compact = double_ok_gesture::render_dashboard(
+        frame,
+        result,
+        decision,
+        snapshot,
+        "/dev/video2 640x480 30 FPS MJPG",
+        25.0,
+        "geometry rules",
+        960,
+        600);
+    expect_dashboard_content(compact, 960, 600);
+
+    const auto regular = double_ok_gesture::render_dashboard(
+        frame,
+        result,
+        decision,
+        snapshot,
+        "/dev/video2 640x480 30 FPS MJPG",
+        25.0,
+        "geometry rules",
+        1440,
+        810);
+    expect_dashboard_content(regular, 1440, 810);
+
+    const auto waiting = double_ok_gesture::render_dashboard(
+        cv::Mat{},
+        double_ok_gesture::DoubleOKResult{},
+        std::nullopt,
+        double_ok_gesture::RuntimeSnapshot{},
+        "/dev/video2 640x480 30 FPS MJPG",
+        25.0,
+        "geometry rules",
+        960,
+        600);
+    expect_dashboard_content(waiting, 960, 600);
+}
+
 void test_runtime_metrics() {
     double_ok_gesture::RuntimeMetrics metrics(3);
     metrics.update(0.0, 0.05);
@@ -510,6 +571,7 @@ int main() {
         {"recognizer_stability", test_recognizer_stability},
         {"opencv_hand_detector_finds_skin_colored_regions", test_opencv_hand_detector_finds_skin_colored_regions},
         {"estimated_hands_do_not_draw_fake_keypoint_skeleton", test_estimated_hands_do_not_draw_fake_keypoint_skeleton},
+        {"dashboard_renders_compact_and_regular_layouts", test_dashboard_renders_compact_and_regular_layouts},
         {"runtime_metrics", test_runtime_metrics},
         {"landmark_backend_parser", test_landmark_backend_parser},
         {"demo_args_parse_and_map_options", test_demo_args_parse_and_map_options},
