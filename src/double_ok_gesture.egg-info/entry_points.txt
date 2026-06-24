@@ -1,0 +1,8 @@
+[console_scripts]
+double-ok-camera-check = double_ok_gesture.camera:main
+double-ok-capture = double_ok_gesture.capture_samples:main
+double-ok-demo = double_ok_gesture.demo:main
+double-ok-eval = double_ok_gesture.evaluate:main
+double-ok-gui = double_ok_gesture.gui:main
+double-ok-prepare-hagrid = double_ok_gesture.prepare_hagrid:main
+double-ok-train = double_ok_gesture.train:main

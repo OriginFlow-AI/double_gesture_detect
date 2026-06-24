@@ -1,0 +1,30 @@
+{
+  "max_num_hands": 2,
+  "ok_threshold": 0.68,
+  "stable_window": 5,
+  "stable_min_positive": 3,
+  "min_detection_confidence": 0.55,
+  "min_tracking_confidence": 0.55,
+  "capture_gate": {
+    "require_glasses_pose": false,
+    "pitch_min": -20.0,
+    "pitch_max": 20.0,
+    "roll_min": -12.0,
+    "roll_max": 12.0,
+    "yaw_min": -25.0,
+    "yaw_max": 25.0,
+    "frame_margin": 0.03,
+    "center_x_min": 0.2,
+    "center_x_max": 0.8,
+    "center_y_min": 0.18,
+    "center_y_max": 0.82,
+    "min_hand_separation": 0.16,
+    "use_stable_double_ok": true,
+    "require_double_ok": true
+  },
+  "data_capture": {
+    "enabled": true,
+    "output_dir": "/userdata/double_ok/captures",
+    "cooldown_sec": 1.0
+  }
+}

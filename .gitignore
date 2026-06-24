@@ -1,0 +1,67 @@
+# Build outputs
+build/
+build-*/
+cmake-build-*/
+CMakeFiles/
+CMakeCache.txt
+CTestTestfile.cmake
+Testing/
+cmake_install.cmake
+install_manifest.txt
+compile_commands.json
+
+# Compiled artifacts
+*.a
+*.dll
+*.dylib
+*.exe
+*.lib
+*.o
+*.obj
+*.out
+*.so
+
+# Local Python environment and caches
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Local configuration and logs
+.env
+.env.*
+*.log
+
+# Local datasets, generated features, trained models, and reports
+data/*
+!data/raw/
+!data/raw/.gitkeep
+!data/raw/README.md
+!data/processed/
+!data/processed/.gitkeep
+!data/processed/README.md
+data/raw/*
+!data/raw/.gitkeep
+!data/raw/README.md
+data/processed/*
+!data/processed/.gitkeep
+!data/processed/README.md
+models/*
+!models/.gitkeep
+!models/README.md
+reports/*
+!reports/.gitkeep
+!reports/README.md
+
+# Editor and OS noise
+.idea/
+.vscode/
+*.swp
+*~
+.DS_Store
+Thumbs.db

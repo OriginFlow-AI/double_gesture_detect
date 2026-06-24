@@ -1,0 +1,18 @@
+# Gemini 335 bootstrap noise model for the first Kalibr run.
+# Replace these four noise values with Allan-deviation results from this device.
+imu0:
+  model: calibrated
+  rostopic: /camera/gyro_accel/sample
+  update_rate: 200.0
+
+  # Units: rad/s/sqrt(Hz)
+  gyroscope_noise_density: 7.0711e-4
+
+  # Units: rad/s^2/sqrt(Hz)
+  gyroscope_random_walk: 4.0e-5
+
+  # Units: m/s^2/sqrt(Hz)
+  accelerometer_noise_density: 5.6569e-3
+
+  # Units: m/s^3/sqrt(Hz)
+  accelerometer_random_walk: 4.0e-3
