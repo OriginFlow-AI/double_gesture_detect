@@ -31,6 +31,7 @@ struct DemoArgs {
     std::optional<std::filesystem::path> capture_output_dir;
     std::optional<double> capture_cooldown_sec;
     bool disable_auto_capture = false;
+    std::string log_level = "INFO";
     int max_frames = 0;
     LandmarkBackend landmark_backend = LandmarkBackend::Rknn;
     std::optional<std::filesystem::path> landmarks_json;

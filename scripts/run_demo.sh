@@ -64,7 +64,11 @@ elif [[ $# -gt 0 && "$1" != --* ]]; then
   shift
 fi
 
-CMAKE_ARGS=(-DCMAKE_BUILD_TYPE="$CMAKE_BUILD_TYPE")
+CMAKE_ARGS=(
+  -DCMAKE_BUILD_TYPE="$CMAKE_BUILD_TYPE"
+  -DDOUBLE_OK_BUILD_QT_DEMO=ON
+  -DDOUBLE_OK_BUILD_CAPTURE_TOOL=OFF
+)
 if [[ "$(uname -m)" == "aarch64" ]]; then
   RKNN_ROOT="${RKNN_ROOT:-$PWD/third_party/rknn_runtime}"
   CMAKE_ARGS+=(

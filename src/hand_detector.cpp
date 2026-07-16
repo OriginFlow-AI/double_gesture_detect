@@ -169,7 +169,8 @@ Landmarks approximate_landmarks(const cv::Rect& box, const cv::Size& size) {
 
 }  // namespace
 
-OpenCVHandDetector::OpenCVHandDetector(HandDetectorConfig config) : config_(config) {
+OpenCVHandDetector::OpenCVHandDetector(const HandDetectorConfig& config)
+    : config_(config) {
     if (config_.max_num_hands < 1) {
         throw std::invalid_argument("max_num_hands must be positive");
     }

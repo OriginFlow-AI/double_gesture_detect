@@ -5,6 +5,7 @@
 
 #include "double_ok_gesture/model_io.hpp"
 #include "double_ok_gesture/training.hpp"
+#include "double_ok_gesture/cli.hpp"
 
 namespace {
 
@@ -30,9 +31,10 @@ Args parse_args(int argc, char** argv) {
         } else if (key == "--output") {
             args.output = next();
         } else if (key == "--max-iter") {
-            args.max_iter = std::stoi(next());
+            args.max_iter = double_ok_gesture::parse_int_argument(next(), key);
         } else if (key == "--random-state") {
-            args.random_state = static_cast<unsigned int>(std::stoul(next()));
+            args.random_state =
+                double_ok_gesture::parse_unsigned_argument(next(), key);
         } else if (key == "--model") {
             const std::string model = next();
             if (model != "numpy_logreg" && model != "logreg") {

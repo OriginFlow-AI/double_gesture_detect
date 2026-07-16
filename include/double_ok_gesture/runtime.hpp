@@ -3,6 +3,7 @@
 #include <cstddef>
 #include <deque>
 #include <string>
+#include <string_view>
 
 namespace double_ok_gesture {
 
@@ -26,6 +27,15 @@ private:
 };
 
 double monotonic_seconds();
+
+enum class LogLevel {
+    Debug,
+    Info,
+    Warning,
+    Error,
+};
+
 void configure_logging(const std::string& level);
+void log_message(LogLevel level, std::string_view message);
 
 }  // namespace double_ok_gesture

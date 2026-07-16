@@ -82,6 +82,69 @@ double_ok_gesture::Landmarks make_open_palm_landmarks() {
     return pts;
 }
 
+double_ok_gesture::Landmarks make_noisy_ok_landmarks() {
+    auto pts = make_ok_landmarks();
+    // The pose head often separates the two occluding tips even when the
+    // image shows contact. This gap is about 30% of the normalized hand span.
+    pts[double_ok_gesture::THUMB_TIP] = {0.95, -0.60, 0.0};
+    return pts;
+}
+
+double_ok_gesture::Landmarks make_folded_non_ok_landmarks() {
+    auto pts = make_ok_landmarks();
+    pts[double_ok_gesture::MIDDLE_PIP] = {-0.08, -1.30, 0.0};
+    pts[double_ok_gesture::MIDDLE_DIP] = {0.12, -1.08, 0.0};
+    pts[double_ok_gesture::MIDDLE_TIP] = {0.02, -0.88, 0.0};
+    pts[double_ok_gesture::RING_PIP] = {0.30, -1.20, 0.0};
+    pts[double_ok_gesture::RING_DIP] = {0.50, -0.98, 0.0};
+    pts[double_ok_gesture::RING_TIP] = {0.30, -0.78, 0.0};
+    pts[double_ok_gesture::PINKY_PIP] = {0.58, -1.05, 0.0};
+    pts[double_ok_gesture::PINKY_DIP] = {0.72, -0.86, 0.0};
+    pts[double_ok_gesture::PINKY_TIP] = {0.52, -0.70, 0.0};
+    return pts;
+}
+
+double_ok_gesture::Landmarks make_near_pinch_open_palm_landmarks() {
+    auto pts = make_ok_landmarks();
+    // Keep the index chain straight while placing the two predicted tips
+    // unusually close. Pinch-only rules misclassify this hard negative.
+    pts[double_ok_gesture::INDEX_PIP] = {-0.32, -1.30, 0.0};
+    pts[double_ok_gesture::INDEX_DIP] = {-0.29, -1.85, 0.0};
+    pts[double_ok_gesture::INDEX_TIP] = {-0.26, -2.40, 0.0};
+    pts[double_ok_gesture::THUMB_TIP] = {-0.05, -2.20, 0.0};
+    return pts;
+}
+
+double_ok_gesture::Landmarks make_live_open_palm_pose() {
+    // /dev/video6 hard negative captured from the same view as the reported
+    // dashboard. Convert normalized display coordinates back to equal-unit
+    // source pixels, matching the ONNX provider's metric_landmarks contract.
+    constexpr double width = 1280.0;
+    constexpr double height = 720.0;
+    const std::array<std::array<double, 2>, 21> normalized = {{
+        {0.759736443, 0.773332299}, {0.767931700, 0.730334897},
+        {0.797899866, 0.681735569}, {0.828707409, 0.661411116},
+        {0.845259857, 0.631444380}, {0.814574051, 0.685457018},
+        {0.851958179, 0.643263753}, {0.867611313, 0.624546814},
+        {0.869145775, 0.609607527}, {0.823523045, 0.709722646},
+        {0.866176033, 0.661496735}, {0.882088757, 0.639553409},
+        {0.891600609, 0.629773373}, {0.838648033, 0.736565823},
+        {0.872270203, 0.688603550}, {0.883478451, 0.668832397},
+        {0.894507790, 0.655754428}, {0.838177776, 0.761439260},
+        {0.867761707, 0.727006785}, {0.873674965, 0.709138574},
+        {0.881071758, 0.697431522},
+    }};
+    double_ok_gesture::Landmarks points{};
+    for (std::size_t index = 0; index < points.size(); ++index) {
+        points[index] = {
+            normalized[index][0] * width,
+            normalized[index][1] * height,
+            0.0,
+        };
+    }
+    return points;
+}
+
 double_ok_gesture::HandPrediction make_hand(double center_x, double center_y, bool is_ok = true) {
     double_ok_gesture::Landmarks pts{};
     for (std::size_t i = 0; i < pts.size(); ++i) {
@@ -118,9 +181,61 @@ void test_feature_vector_has_stable_shape() {
 
 void test_rule_score_prefers_ok_over_open_palm() {
     const double ok_score = double_ok_gesture::rule_ok_score(make_ok_landmarks(), "Left");
+    const double noisy_ok_score =
+        double_ok_gesture::rule_ok_score(make_noisy_ok_landmarks(), "Left");
     const double palm_score = double_ok_gesture::rule_ok_score(make_open_palm_landmarks(), "Left");
-    EXPECT_TRUE(ok_score > 0.65);
+    const double folded_score =
+        double_ok_gesture::rule_ok_score(make_folded_non_ok_landmarks(), "Left");
+    const double near_pinch_palm_score = double_ok_gesture::rule_ok_score(
+        make_near_pinch_open_palm_landmarks(), "Left");
+    const double live_open_palm_score =
+        double_ok_gesture::rule_ok_score(make_live_open_palm_pose());
+    EXPECT_TRUE(ok_score >= 0.68);
+    EXPECT_TRUE(noisy_ok_score >= 0.68);
+    EXPECT_TRUE(palm_score < 0.68);
+    EXPECT_TRUE(folded_score < 0.68);
+    EXPECT_TRUE(near_pinch_palm_score < 0.68);
+    EXPECT_TRUE(live_open_palm_score < 0.68);
     EXPECT_TRUE(palm_score < ok_score);
+}
+
+void test_rule_score_rejects_degenerate_pose_and_is_similarity_invariant() {
+    EXPECT_NEAR(double_ok_gesture::rule_ok_score({}), 0.0, 1e-12);
+
+    const auto source = make_noisy_ok_landmarks();
+    auto transformed = source;
+    constexpr double kAngle = 0.71;
+    constexpr double kScale = 3.4;
+    for (auto& point : transformed) {
+        const double x = point.x;
+        const double y = point.y;
+        point.x = 7.0 + kScale * (std::cos(kAngle) * x - std::sin(kAngle) * y);
+        point.y = -4.0 + kScale * (std::sin(kAngle) * x + std::cos(kAngle) * y);
+    }
+    EXPECT_NEAR(
+        double_ok_gesture::rule_ok_score(source),
+        double_ok_gesture::rule_ok_score(transformed),
+        1e-12);
+}
+
+void test_geometry_fallback_uses_metric_points_and_visibility_gate() {
+    double_ok_gesture::DetectedHand hand;
+    hand.landmarks = make_open_palm_landmarks();
+    hand.metric_landmarks = make_ok_landmarks();
+
+    double_ok_gesture::DoubleOKRecognizer recognizer;
+    const auto reliable = recognizer.process_hands({hand});
+    EXPECT_TRUE(reliable.hands[0].is_ok);
+    EXPECT_NEAR(
+        reliable.hands[0].landmarks[double_ok_gesture::THUMB_TIP].x,
+        hand.landmarks[double_ok_gesture::THUMB_TIP].x,
+        1e-12);
+
+    hand.gesture_landmarks_reliable = false;
+    double_ok_gesture::DoubleOKRecognizer gated_recognizer;
+    const auto unreliable = gated_recognizer.process_hands({hand});
+    EXPECT_FALSE(unreliable.hands[0].is_ok);
+    EXPECT_NEAR(unreliable.hands[0].ok_score, 0.0, 1e-12);
 }
 
 void test_capture_gate_ready_and_blocks() {
@@ -587,6 +702,8 @@ int main() {
     const std::vector<std::pair<std::string, void (*)()>> tests = {
         {"feature_vector_has_stable_shape", test_feature_vector_has_stable_shape},
         {"rule_score_prefers_ok_over_open_palm", test_rule_score_prefers_ok_over_open_palm},
+        {"rule_score_rejects_degenerate_pose_and_is_similarity_invariant", test_rule_score_rejects_degenerate_pose_and_is_similarity_invariant},
+        {"geometry_fallback_uses_metric_points_and_visibility_gate", test_geometry_fallback_uses_metric_points_and_visibility_gate},
         {"capture_gate_ready_and_blocks", test_capture_gate_ready_and_blocks},
         {"capture_gate_requires_double_ok_and_centered", test_capture_gate_requires_double_ok_and_centered},
         {"capture_gate_requires_stable_double_ok", test_capture_gate_requires_stable_double_ok},

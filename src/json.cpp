@@ -1,6 +1,7 @@
 #include "double_ok_gesture/json.hpp"
 
 #include <cctype>
+#include <cstdint>
 #include <fstream>
 #include <sstream>
 
@@ -89,17 +90,36 @@ private:
                     case 't':
                         result.push_back('\t');
                         break;
-                    case 'u':
-                        if (pos_ + 4 > text_.size()) {
-                            fail("short unicode escape");
+                    case 'u': {
+                        std::uint32_t codepoint = parse_hex_quad();
+                        if (codepoint >= 0xD800U && codepoint <= 0xDBFFU) {
+                            if (pos_ + 2 > text_.size() ||
+                                text_[pos_] != '\\' ||
+                                text_[pos_ + 1] != 'u') {
+                                fail("high surrogate must be followed by a low surrogate");
+                            }
+                            pos_ += 2;
+                            const std::uint32_t low = parse_hex_quad();
+                            if (low < 0xDC00U || low > 0xDFFFU) {
+                                fail("invalid low surrogate");
+                            }
+                            codepoint = 0x10000U +
+                                        ((codepoint - 0xD800U) << 10U) +
+                                        (low - 0xDC00U);
+                        } else if (codepoint >= 0xDC00U &&
+                                   codepoint <= 0xDFFFU) {
+                            fail("unexpected low surrogate");
                         }
-                        pos_ += 4;
-                        result.push_back('?');
+                        append_utf8(result, codepoint);
                         break;
+                    }
                     default:
                         fail("unsupported escape");
                 }
             } else {
+                if (static_cast<unsigned char>(ch) < 0x20U) {
+                    fail("unescaped control character in string");
+                }
                 result.push_back(ch);
             }
         }
@@ -111,7 +131,18 @@ private:
         if (text_[pos_] == '-') {
             ++pos_;
         }
-        consume_digits();
+        if (pos_ >= text_.size()) {
+            fail("incomplete number");
+        }
+        if (text_[pos_] == '0') {
+            ++pos_;
+            if (pos_ < text_.size() &&
+                std::isdigit(static_cast<unsigned char>(text_[pos_]))) {
+                fail("leading zero in number");
+            }
+        } else {
+            consume_digits();
+        }
         if (pos_ < text_.size() && text_[pos_] == '.') {
             ++pos_;
             consume_digits();
@@ -161,7 +192,13 @@ private:
             std::string key = parse_string();
             skip_ws();
             consume(':');
-            values.emplace(std::move(key), parse_value());
+            Json value = parse_value();
+            const auto [unused, inserted] =
+                values.emplace(key, std::move(value));
+            (void)unused;
+            if (!inserted) {
+                fail("duplicate object key '" + key + "'");
+            }
             skip_ws();
             if (peek('}')) {
                 ++pos_;
@@ -178,6 +215,57 @@ private:
         }
         if (pos_ == start) {
             fail("expected digits");
+        }
+    }
+
+    std::uint32_t parse_hex_quad() {
+        if (pos_ + 4 > text_.size()) {
+            fail("short unicode escape");
+        }
+        std::uint32_t value = 0;
+        for (int index = 0; index < 4; ++index) {
+            const unsigned char ch =
+                static_cast<unsigned char>(text_[pos_++]);
+            value <<= 4U;
+            if (ch >= '0' && ch <= '9') {
+                value |= static_cast<std::uint32_t>(ch - '0');
+            } else if (ch >= 'a' && ch <= 'f') {
+                value |= static_cast<std::uint32_t>(ch - 'a' + 10U);
+            } else if (ch >= 'A' && ch <= 'F') {
+                value |= static_cast<std::uint32_t>(ch - 'A' + 10U);
+            } else {
+                fail("invalid hexadecimal digit in unicode escape");
+            }
+        }
+        return value;
+    }
+
+    void append_utf8(std::string& output, std::uint32_t codepoint) {
+        if (codepoint <= 0x7FU) {
+            output.push_back(static_cast<char>(codepoint));
+        } else if (codepoint <= 0x7FFU) {
+            output.push_back(
+                static_cast<char>(0xC0U | (codepoint >> 6U)));
+            output.push_back(
+                static_cast<char>(0x80U | (codepoint & 0x3FU)));
+        } else if (codepoint <= 0xFFFFU) {
+            output.push_back(
+                static_cast<char>(0xE0U | (codepoint >> 12U)));
+            output.push_back(static_cast<char>(
+                0x80U | ((codepoint >> 6U) & 0x3FU)));
+            output.push_back(
+                static_cast<char>(0x80U | (codepoint & 0x3FU)));
+        } else if (codepoint <= 0x10FFFFU) {
+            output.push_back(
+                static_cast<char>(0xF0U | (codepoint >> 18U)));
+            output.push_back(static_cast<char>(
+                0x80U | ((codepoint >> 12U) & 0x3FU)));
+            output.push_back(static_cast<char>(
+                0x80U | ((codepoint >> 6U) & 0x3FU)));
+            output.push_back(
+                static_cast<char>(0x80U | (codepoint & 0x3FU)));
+        } else {
+            fail("unicode codepoint is out of range");
         }
     }
 
@@ -291,6 +379,9 @@ Json load_json(const std::filesystem::path& path) {
     }
     std::ostringstream buffer;
     buffer << in.rdbuf();
+    if (in.bad()) {
+        throw std::runtime_error("Failed to read JSON file: " + path.string());
+    }
     return parse_json(buffer.str());
 }
 

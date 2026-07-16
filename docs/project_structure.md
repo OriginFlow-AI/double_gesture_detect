@@ -29,6 +29,7 @@ config.hpp/cpp         当前 JSON 配置的 C++ 读取与校验
 camera.hpp/cpp         OpenCV 摄像头打开、重试、设备枚举
 landmark_provider.hpp/cpp hand landmark provider 抽象与当前调试 provider
 runtime.hpp/cpp        FPS、处理延迟
+cli.hpp/cpp            CLI 整数/浮点参数的严格、完整解析
 runtime_pipeline.hpp/cpp 单帧运行流水线、后端选择、运行时装配
 capture_writer.hpp/cpp ready 后保存原始帧和 metadata
 demo_app.hpp/cpp      double-ok-demo 的 CLI、headless smoke 和运行选项映射
@@ -36,7 +37,7 @@ qt_dashboard.hpp/cpp Qt 实时 dashboard 控件、状态刷新、截图和事件
 report.hpp/cpp        静态 GUI 报告数据扫描与 HTML 渲染
 training.hpp/cpp       特征 CSV、分层切分、逻辑回归、指标
 model_io.hpp/cpp       C++ 文本模型保存和加载
-json.hpp/cpp           小型 JSON 解析器，用于 HaGRID 转换
+json.hpp/cpp           小型严格 JSON 解析器，供配置、模型合同和 HaGRID 转换复用
 ```
 
 `src/demo_app.cpp` 编成非 Qt 的 `double_ok_gesture_demo_app` 小库，供 demo 和测试复用。`src/qt_dashboard.cpp` 只编进 `double-ok-demo`，不进入 `double_ok_gesture_core`，保证核心库继续不依赖 Qt。
@@ -73,3 +74,7 @@ double-ok-gui
 ```bash
 scripts/test.sh
 ```
+
+`tests/cpp/test_config_io.cpp` 集中覆盖配置作用域、JSON 歧义输入、CLI 数值、模型
+原子写入和采集 image/metadata 成对提交；姿态后处理与模型替换合同继续保持独立测试
+目标，便于在 CTest 中快速定位失败模块。

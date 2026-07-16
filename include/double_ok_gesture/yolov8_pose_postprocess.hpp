@@ -116,6 +116,9 @@ struct DecodeOptions {
   double min_score = 0.25;
   double nms_iou_threshold = 0.45;
   double min_keypoint_visibility = 0.5;
+  // Candidates below this count are removed before NMS/max_hands so a
+  // high-box-score but unusable pose cannot displace a valid hand.
+  std::size_t min_reliable_keypoints = 0;
   std::size_t max_hands = 2;
   bool clip_to_source = true;
 };

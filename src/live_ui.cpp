@@ -513,13 +513,26 @@ std::string handedness_label(const std::string& handedness) {
     return "未知手";
 }
 
-double displayed_handedness_confidence(const HandPrediction& hand) {
-    // The 0612 debug/test providers do not provide a separate handedness
-    // confidence. Preserve their historical display while production model
-    // output uses the dedicated attribute-model confidence.
-    return hand.handedness_confidence > 0.0
-               ? hand.handedness_confidence
-               : hand.ok_score;
+std::string hand_overlay_label(const HandPrediction& hand) {
+    std::string label = handedness_label(hand.handedness);
+    if (hand.handedness_confidence > 0.0) {
+        label += " " + fixed(hand.handedness_confidence * 100.0, 1) + "%";
+    }
+    label += ui_text(" · OK 匹配 ", " · OK score ") +
+             fixed(hand.ok_score * 100.0, 1) + "%";
+    return label;
+}
+
+std::string hand_source_score(const HandPrediction& hand) {
+    if (hand.handedness_confidence > 0.0) {
+        return ui_text("手别 ", "SIDE ") +
+               fixed(hand.handedness_confidence * 100.0, 1) + "%";
+    }
+    if (hand.box) {
+        return ui_text("检测 ", "POSE ") +
+               fixed(hand.box->detection_score * 100.0, 1) + "%";
+    }
+    return ui_text("无手别分数", "NO SIDE SCORE");
 }
 
 void draw_section_title(cv::Mat& image, const std::string& title, cv::Point origin) {
@@ -560,9 +573,7 @@ void draw_hand_tracking(cv::Mat& frame_bgr, const DoubleOKResult& result) {
         draw_landmark_skeleton(frame_bgr, points, color, false);
         const cv::Rect box = hand_box(hand, size);
         corner_box(frame_bgr, box, color, 3);
-        const std::string label =
-            handedness_label(hand.handedness) + "  " +
-            fixed(displayed_handedness_confidence(hand) * 100.0, 1) + "%";
+        const std::string label = hand_overlay_label(hand);
         const int label_width = std::max(150, text_size(label, 0.48).width + 24);
         const int label_y = std::max(8, box.y - 34);
         rounded_rect(frame_bgr, {box.x, label_y, label_width, 28}, cv::Scalar(32, 32, 32), 6);
@@ -769,7 +780,7 @@ cv::Mat render_dashboard(
     }
 
     y += compact_side ? 8 : 12;
-    draw_section_title(canvas, ui_text("手部置信度", "HAND CONFIDENCE"), {sx, y});
+    draw_section_title(canvas, ui_text("手势评分", "HAND SCORES"), {sx, y});
     y += compact_side ? 18 : 20;
     for (std::size_t i = 0; i < 2; ++i) {
         const cv::Rect card(sx, y, sw, hand_card_h);
@@ -780,7 +791,7 @@ cv::Mat render_dashboard(
             put_text(canvas, handedness_label(hand.handedness), {card.x + 14, card.y + 24}, 0.43, kText, 1);
             right_text(
                 canvas,
-                fixed(displayed_handedness_confidence(hand) * 100.0, 1) + "%",
+                hand_source_score(hand),
                 {card.x + card.width - 14, card.y + 24},
                 0.45,
                 color,

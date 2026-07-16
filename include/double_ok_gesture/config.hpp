@@ -63,6 +63,7 @@ struct RuntimeConfig {
 
 RuntimeConfig load_runtime_config(const std::filesystem::path& path);
 RuntimeConfig load_runtime_config_or_default(const std::optional<std::filesystem::path>& path);
+void validate_runtime_config(const RuntimeConfig& config);
 void apply_threshold_override(RuntimeConfig& config, std::optional<double> threshold);
 void require_glasses_pose(RuntimeConfig& config);
 

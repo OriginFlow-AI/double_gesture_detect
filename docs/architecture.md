@@ -18,7 +18,8 @@ Camera
 
 1. 相机提供 BGR 帧。
 2. YOLOv8 provider 为每只手输出框、0-20 共 21 个二维关键点及 visibility。
-3. 属性分类器基于 21 组 x/y/visibility 输出可信 Left/Right 和 OK score。
+3. 有模型二时，属性分类器基于 21 组 x/y/visibility 输出可信 Left/Right 和 OK
+   score；桌面 ONNX 缺模型二时才显式使用实验几何 fallback。
 4. recognizer 只在恰好一左一右且两手均 OK 时产生即时双手 OK，并用时间窗口稳定。
 5. capture gate 判断眼镜姿态、完整入框、中心区域、双手分离和手势条件。
 6. gate ready 后才允许保存原始帧和 metadata。
@@ -32,7 +33,7 @@ core
 device
   camera / glasses_pose
 inference
-  provider / opencv_debug / mediapipe / rknn
+  provider / opencv_debug / mediapipe / onnx / rknn
 runtime
   pipeline / metrics / app_config
 capture
@@ -79,6 +80,7 @@ inference:
   include/double_ok_gesture/model_contract.hpp
   src/landmark_provider.cpp
   src/hand_detector.cpp
+  src/onnx_yolov8_pose_provider.cpp
   src/rknn_yolov8_pose_provider.cpp
   src/yolov8_pose_postprocess.cpp
   src/hand_attribute_classifier.cpp
@@ -120,6 +122,7 @@ report:
 ## 后端口径
 
 ```text
+yolov8-onnx       桌面 Pose 后端；可接模型二，缺失时明确标记实验几何模式
 yolov8-rknn       生产目标后端，面向 RK3588/RKNN；rknn 是兼容别名
 mediapipe         显式桌面调试后端，不是生产 fallback
 landmarks-json    外部 21 点 JSON 输入，用于验证显示链路和后端契约
@@ -150,14 +153,19 @@ C++ 主线不得直接加载 pickle/joblib。
 1. 统一契约、架构文档、脚本和 README。
 2. 从 `apps/demo.cpp` 抽出 capture writer、runtime bundle、单帧 pipeline、CLI/headless 和 Qt dashboard。
 3. 增加 `HandLandmarkProvider` 抽象，统一 `rknn / mediapipe / landmarks-json / opencv-heuristic / none`。
-4. 拆分测试：features、recognizer、gate、config、provider、training、runtime、report、demo app。
+4. 按高风险边界拆分测试：核心流程、配置/I/O、YOLOv8 后处理、模型替换合同。
 5. 保持 0612 GUI/CLI 边界，接入 RK3588 YOLOv8 RKNN 和属性分类器。
 6. 模型二及目标域数据齐备后完成 RK3588 板端精度、性能和长稳验收，再继续规整 target。
+
+Pose provider 同时保留两套坐标：按宽高归一化的点只供 UI/门控，原图像素等距点供
+几何 fallback，避免 1280×720 画面把角度和距离拉伸。低可靠 pose 在 NMS 和
+`max_hands` 前过滤；fallback 还要求拇/食指尖及三根开放手指的远端点可靠。
 
 ## 验收矩阵
 
 ```bash
 bash -n scripts/*.sh
+scripts/test.sh
 cmake --build build --target double-ok-demo double-ok-headless double-ok-gui double_ok_gesture_tests -j 2
 ctest --test-dir build --output-on-failure
 scripts/gui_report.sh

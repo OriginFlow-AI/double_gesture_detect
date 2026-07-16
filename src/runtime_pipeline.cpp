@@ -1,6 +1,5 @@
 #include "double_ok_gesture/runtime_pipeline.hpp"
 
-#include <cmath>
 #include <memory>
 #include <stdexcept>
 #include <utility>
@@ -135,6 +134,7 @@ std::unique_ptr<HandLandmarkProvider> make_landmark_provider(const RuntimeOption
 }
 
 RuntimeBundle make_runtime(const RuntimeOptions& options) {
+    configure_logging(options.log_level);
     auto runtime_config = load_runtime_config(options.config_path);
     apply_threshold_override(runtime_config, options.threshold);
     if (options.require_glasses_pose) {
@@ -149,28 +149,35 @@ RuntimeBundle make_runtime(const RuntimeOptions& options) {
     if (options.disable_auto_capture) {
         runtime_config.data_capture.enabled = false;
     }
-    if (!std::isfinite(runtime_config.data_capture.cooldown_sec) || runtime_config.data_capture.cooldown_sec < 0.0) {
-        throw std::invalid_argument("--capture-cooldown must be finite and non-negative");
-    }
+    validate_runtime_config(runtime_config);
 
     const bool production_backend =
         options.landmark_backend == LandmarkBackend::Rknn;
+    const bool pose_backend = production_backend ||
+                              options.landmark_backend == LandmarkBackend::Onnx;
     std::optional<HandAttributeClassifier> attribute_classifier;
     OKHandClassifier classifier(runtime_config.recognizer.ok_threshold);
-    if (production_backend) {
+    if (pose_backend) {
         const std::filesystem::path attribute_model =
             options.model_path.value_or(
                 runtime_config.hand_attribute.model_path);
-        if (attribute_model.empty()) {
+        if (attribute_model.empty() && production_backend) {
             throw std::runtime_error(
                 "yolov8-rknn requires a trained Left/Right + OK hand "
                 "attribute model; set --model or attribute_model_path");
         }
-        attribute_classifier.emplace(
-            attribute_model,
-            runtime_config.recognizer.handedness_confidence_threshold,
-            runtime_config.recognizer.ok_threshold,
-            runtime_config.recognizer.input_mirrored);
+        if (!attribute_model.empty()) {
+            attribute_classifier.emplace(
+                attribute_model,
+                runtime_config.recognizer.handedness_confidence_threshold,
+                runtime_config.recognizer.ok_threshold,
+                runtime_config.recognizer.input_mirrored);
+        } else {
+            log_message(
+                LogLevel::Warning,
+                "yolov8-onnx has no hand attribute model: using the "
+                "experimental geometry OK scorer; handedness remains Unknown");
+        }
     } else if (options.model_path) {
         // Preserve 0612 compatibility for explicitly selected test/debug
         // backends and their historical OK-only text classifier.
@@ -186,6 +193,12 @@ RuntimeBundle make_runtime(const RuntimeOptions& options) {
 
     auto landmark_provider = make_landmark_provider(options, runtime_config);
     auto camera = open_camera(options.camera);
+
+    log_message(
+        LogLevel::Info,
+        std::string("runtime initialized: backend=") +
+            landmark_backend_value(options.landmark_backend) +
+            ", config=" + options.config_path.string());
 
     return {
         runtime_config,

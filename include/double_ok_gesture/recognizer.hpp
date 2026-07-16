@@ -45,6 +45,13 @@ struct DetectedHand {
     bool landmarks_estimated = false;
     std::optional<LandmarkConfidences> landmark_confidences = std::nullopt;
     std::optional<HandBoundingBox> box = std::nullopt;
+    // Display/capture coordinates are normalized independently by image
+    // width and height. Geometry classification instead needs equal x/y
+    // units, normally source-image pixels, to preserve angles and distances.
+    std::optional<Landmarks> metric_landmarks = std::nullopt;
+    // Pose backends set this false when the distal points needed by the
+    // fallback geometry rule do not meet their configured visibility limit.
+    bool gesture_landmarks_reliable = true;
 };
 
 class OKHandClassifier {

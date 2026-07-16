@@ -4,10 +4,10 @@
 #include <array>
 #include <chrono>
 #include <cmath>
-#include <fstream>
 #include <iostream>
-#include <regex>
 #include <stdexcept>
+
+#include "double_ok_gesture/json.hpp"
 
 namespace double_ok_gesture {
 namespace {
@@ -30,13 +30,14 @@ void validate_normalized_range(const std::string& name, double minimum, double m
     }
 }
 
-std::optional<double> find_number(const std::string& text, const std::string& key) {
-    const std::regex pattern("\"" + key + "\"\\s*:\\s*(-?(?:\\d+\\.?\\d*|\\.\\d+)(?:[eE][+-]?\\d+)?)");
-    std::smatch match;
-    if (!std::regex_search(text, match, pattern)) {
+std::optional<double> optional_finite_number(
+    const Json& object,
+    const std::string& key) {
+    const Json* member = object.get(key);
+    if (!member) {
         return std::nullopt;
     }
-    const double value = std::stod(match[1].str());
+    const double value = member->as_number();
     if (!std::isfinite(value)) {
         throw std::runtime_error("pose values must be finite");
     }
@@ -216,15 +217,12 @@ std::optional<GlassesPose> load_glasses_pose(const std::filesystem::path& path) 
         return std::nullopt;
     }
     try {
-        std::ifstream in(path);
-        if (!in) {
-            return std::nullopt;
-        }
-        const std::string text((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+        const Json root = load_json(path);
+        (void)root.as_object();
         return GlassesPose{
-            find_number(text, "pitch"),
-            find_number(text, "roll"),
-            find_number(text, "yaw"),
+            optional_finite_number(root, "pitch"),
+            optional_finite_number(root, "roll"),
+            optional_finite_number(root, "yaw"),
         };
     } catch (const std::exception&) {
         return std::nullopt;

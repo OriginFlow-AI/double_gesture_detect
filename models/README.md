@@ -19,6 +19,11 @@ Runtime 对比原始简化图的输出完全一致，OpenCV 4.6 与 ONNX Runtime
 checkpoint 内嵌的 Ultralytics AGPL-3.0 元数据以及训练数据的 CC BY-NC-SA 4.0
 许可。
 
+该文件只输出框和 21 点，不输出 Left/Right 或 OK 分类。未提供模型二时，桌面程序
+使用明确标注的实验几何 scorer；其数值不是校准概率，不能作为目标域精度报告。
+Gemini 335 现场对照已发现张掌的预测拇食指距离可小于真 OK，说明当前权重的细粒度
+指尖定位不足，不能继续通过放宽几何阈值当作可靠 OK 模型。
+
 ## 模型一：YOLOv8-Pose 手部 21 点
 
 - RKNN：`rk3588/hand_pose_640_fp.rknn`
@@ -36,7 +41,8 @@ checkpoint 内嵌的 Ultralytics AGPL-3.0 元数据以及训练数据的 CC BY-N
 
 当前仓库没有已训练的模型二，也没有足够的奥比 Gemini 335 目标域标注数据。
 生产 `yolov8-rknn` 后端因此会明确初始化失败，不会回退到几何规则、MediaPipe、
-OpenCV heuristic 或 JSON fixture。
+OpenCV heuristic 或 JSON fixture。桌面 `yolov8-onnx` 可显式用 `--model` 加载同一
+属性模型；缺失时仅保留实验几何模式并打印 WARNING。
 
 运行时已固定 `double_ok_hand_attribute_v1` 合同：输入 21 组归一化
 `x,y,visibility`，共 63 个值；两个线性输出头分别给出 Left/Right 概率和

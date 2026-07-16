@@ -102,7 +102,8 @@ private:
 
 class OpenCVDebugLandmarkProvider : public HandLandmarkProvider {
 public:
-    explicit OpenCVDebugLandmarkProvider(HandDetectorConfig config = {});
+    explicit OpenCVDebugLandmarkProvider(
+        const HandDetectorConfig& config = {});
 
     LandmarkProviderInfo info() const override;
     std::vector<DetectedHand> detect(const cv::Mat& frame_bgr) override;

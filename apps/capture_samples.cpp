@@ -7,6 +7,7 @@
 #include <opencv2/opencv.hpp>
 
 #include "double_ok_gesture/camera.hpp"
+#include "double_ok_gesture/cli.hpp"
 
 namespace {
 
@@ -38,9 +39,9 @@ int main(int argc, char** argv) {
             } else if (key == "--output-dir") {
                 output_dir = next();
             } else if (key == "--width") {
-                camera.width = std::stoi(next());
+                camera.width = double_ok_gesture::parse_int_argument(next(), key);
             } else if (key == "--height") {
-                camera.height = std::stoi(next());
+                camera.height = double_ok_gesture::parse_int_argument(next(), key);
             } else {
                 throw std::invalid_argument("Unknown argument: " + key);
             }

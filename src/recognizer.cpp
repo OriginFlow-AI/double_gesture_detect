@@ -139,7 +139,23 @@ DoubleOKResult DoubleOKRecognizer::process_hands(const std::vector<DetectedHand>
                     *hand.ok_score,
                     hand.landmarks_estimated));
         } else {
-            HandPrediction prediction = classifier_.predict(hand.landmarks, hand.handedness);
+            const bool use_geometry_fallback = !classifier_.uses_model();
+            const Landmarks& classifier_landmarks =
+                use_geometry_fallback && hand.metric_landmarks
+                    ? *hand.metric_landmarks
+                    : hand.landmarks;
+            HandPrediction prediction =
+                use_geometry_fallback && !hand.gesture_landmarks_reliable
+                    ? classifier_.predict_with_score(
+                          classifier_landmarks,
+                          hand.handedness,
+                          0.0,
+                          hand.landmarks_estimated)
+                    : classifier_.predict(
+                          classifier_landmarks, hand.handedness);
+            // metric_landmarks are classification-only. Preserve normalized
+            // coordinates for overlays and capture-gate geometry.
+            prediction.landmarks = hand.landmarks;
             prediction.landmarks_estimated = hand.landmarks_estimated;
             prediction.landmark_confidences = hand.landmark_confidences;
             prediction.box = hand.box;

@@ -730,14 +730,33 @@ void write_gui_report(const GuiReportRequest& request) {
     const auto config = std::filesystem::exists(request.config) ? load_runtime_config(request.config) : RuntimeConfig{};
     const auto csv = scan_feature_csv(request.csv);
     const auto model = summarize_file(request.model);
-    if (!request.output.parent_path().empty()) {
-        std::filesystem::create_directories(request.output.parent_path());
+    if (request.output.empty() || request.output.filename().empty()) {
+        throw std::invalid_argument("Report output must name a file");
     }
-    std::ofstream out(request.output);
-    if (!out) {
-        throw std::runtime_error("Cannot write report: " + request.output.string());
+    const std::filesystem::path directory = request.output.parent_path();
+    if (!directory.empty()) {
+        std::filesystem::create_directories(directory);
     }
-    out << render_gui_report(request.config, config, csv, model);
+    const std::filesystem::path temporary =
+        directory / ("." + request.output.filename().string() + ".tmp");
+    try {
+        std::ofstream out(temporary);
+        if (!out) {
+            throw std::runtime_error(
+                "Cannot write report: " + request.output.string());
+        }
+        out << render_gui_report(request.config, config, csv, model);
+        out.close();
+        if (!out) {
+            throw std::runtime_error(
+                "Cannot finish report: " + request.output.string());
+        }
+        std::filesystem::rename(temporary, request.output);
+    } catch (...) {
+        std::error_code ignored;
+        std::filesystem::remove(temporary, ignored);
+        throw;
+    }
 }
 
 }  // namespace double_ok_gesture

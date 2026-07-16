@@ -524,6 +524,7 @@ struct YoloV8RknnHandLandmarkProvider::Impl {
         options.min_score = config.min_detection_confidence;
         options.nms_iou_threshold = config.nms_iou_threshold;
         options.min_keypoint_visibility = config.min_keypoint_visibility;
+        options.min_reliable_keypoints = config.min_reliable_keypoints;
         options.max_hands = static_cast<std::size_t>(config.max_num_hands);
         options.clip_to_source = true;
         const std::vector<yolov8_pose::HandPose> poses =
@@ -541,6 +542,7 @@ struct YoloV8RknnHandLandmarkProvider::Impl {
             }
 
             Landmarks landmarks{};
+            Landmarks metric_landmarks{};
             LandmarkConfidences confidences{};
             for (std::size_t index = 0; index < landmarks.size(); ++index) {
                 const yolov8_pose::Keypoint& point = pose.keypoints[index];
@@ -549,9 +551,17 @@ struct YoloV8RknnHandLandmarkProvider::Impl {
                     point.y / static_cast<double>(frame_bgr.rows),
                     0.0,
                 };
+                metric_landmarks[index] = {point.x, point.y, 0.0};
                 confidences[index] = point.visibility;
             }
             validate_landmarks(landmarks);
+            const bool gesture_landmarks_reliable = std::all_of(
+                kGeometryRequiredLandmarkIndices.begin(),
+                kGeometryRequiredLandmarkIndices.end(),
+                [&](int index) {
+                    return pose.keypoints[static_cast<std::size_t>(index)]
+                        .reliable;
+                });
             detected.push_back(DetectedHand{
                 landmarks,
                 "Unknown",
@@ -565,6 +575,8 @@ struct YoloV8RknnHandLandmarkProvider::Impl {
                     pose.box.ymax / static_cast<double>(frame_bgr.rows),
                     pose.score,
                 },
+                metric_landmarks,
+                gesture_landmarks_reliable,
             });
         }
         return detected;

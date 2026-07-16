@@ -41,12 +41,18 @@ QString camera_label(const CameraStream& camera) {
         .arg(QString::fromStdString(info.fourcc));
 }
 
-std::string model_label_for(const QtDashboardOptions& options) {
+std::string model_label_for(
+    const QtDashboardOptions& options,
+    const RuntimeConfig& config) {
     if (options.landmark_backend == LandmarkBackend::Onnx) {
-        return options.pose_model_path
-                   ? "YOLOv8-Pose / ONNX / " +
-                         options.pose_model_path->filename().string()
-                   : "YOLOv8-Pose / ONNX";
+        const std::string pose = options.pose_model_path
+                                     ? options.pose_model_path->filename().string()
+                                     : "YOLOv8-Pose";
+        const std::filesystem::path attribute_model =
+            options.model_path.value_or(config.hand_attribute.model_path);
+        return !attribute_model.empty()
+                   ? pose + " + " + attribute_model.filename().string()
+                   : pose + " / 实验几何规则";
     }
     if (options.model_path) {
         if (options.landmark_backend == LandmarkBackend::Rknn) {
@@ -176,7 +182,7 @@ struct QtDashboard::Impl {
                     RuntimeSnapshot{0.0, 0.0, 0},
                     camera_label(runtime.camera).toStdString(),
                     options.target_fps,
-                    model_label_for(options),
+                    model_label_for(options, runtime.config),
                     options.width,
                     options.height));
             }
@@ -210,7 +216,7 @@ struct QtDashboard::Impl {
             snapshot,
             camera_label(runtime.camera).toStdString(),
             options.target_fps,
-            model_label_for(options),
+            model_label_for(options, runtime.config),
             options.width,
             options.height);
         present_dashboard(dashboard);

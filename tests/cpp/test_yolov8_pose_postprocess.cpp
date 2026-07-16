@@ -265,6 +265,41 @@ void test_flat_onnx_output_applies_nms_and_rejects_wrong_shape() {
   EXPECT_TRUE(wrong_shape_threw);
 }
 
+void test_low_reliability_candidate_cannot_displace_two_valid_hands() {
+  constexpr std::size_t kCandidates = 1029;
+  std::vector<float> values(
+      pose::kFlatPoseChannelCount * kCandidates, 0.0F);
+  set_flat_pose_candidate(
+      values, kCandidates, true, 10, 30.0F, 40.0F, 20.0F, 20.0F,
+      0.95F);
+  set_flat_pose_candidate(
+      values, kCandidates, true, 100, 100.0F, 40.0F, 20.0F, 20.0F,
+      0.90F);
+  set_flat_pose_candidate(
+      values, kCandidates, true, 200, 180.0F, 40.0F, 20.0F, 20.0F,
+      0.85F);
+  for (std::size_t keypoint = 0; keypoint < pose::kHandKeypointCount;
+       ++keypoint) {
+    set_flat_pose_value(
+        values, kCandidates, true, 10, 5 + keypoint * 3 + 2, 0.1F);
+  }
+
+  pose::DecodeOptions options;
+  options.input_width = 224;
+  options.input_height = 224;
+  options.min_score = 0.5;
+  options.min_keypoint_visibility = 0.5;
+  options.min_reliable_keypoints = 8;
+  options.max_hands = 2;
+  const auto output = pose::decode_flat_pose(
+      {values.data(), values.size(),
+       {1, pose::kFlatPoseChannelCount, kCandidates}},
+      pose::make_letterbox_transform(224, 224, 224, 224), options);
+  EXPECT_EQ(output.size(), 2U);
+  EXPECT_EQ(output[0].candidate_index, 100U);
+  EXPECT_EQ(output[1].candidate_index, 200U);
+}
+
 void test_dfl_softmax_integral_is_stable() {
   std::array<float, pose::kDflBinCount> logits{};
   logits.fill(-100.0F);
@@ -515,6 +550,8 @@ int main() {
        test_decodes_flat_onnx_output_layouts_and_maps_21_points},
       {"flat_onnx_output_applies_nms_and_rejects_wrong_shape",
        test_flat_onnx_output_applies_nms_and_rejects_wrong_shape},
+      {"low_reliability_candidate_cannot_displace_two_valid_hands",
+       test_low_reliability_candidate_cannot_displace_two_valid_hands},
       {"dfl_softmax_integral_is_stable", test_dfl_softmax_integral_is_stable},
       {"decodes_rkopt_nchw_dfl_and_21_visibility_values",
        test_decodes_rkopt_nchw_dfl_and_21_visibility_values},

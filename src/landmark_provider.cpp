@@ -163,6 +163,7 @@ void write_all(int fd, const unsigned char* data, std::size_t size) {
 }
 
 std::string read_line(int fd) {
+    static constexpr std::size_t kMaxResponseBytes = 4U * 1024U * 1024U;
     std::string line;
     char ch = '\0';
     while (true) {
@@ -178,6 +179,10 @@ std::string read_line(int fd) {
         }
         if (ch == '\n') {
             return line;
+        }
+        if (line.size() >= kMaxResponseBytes) {
+            throw std::runtime_error(
+                "MediaPipe landmark sidecar response exceeds 4 MiB");
         }
         line.push_back(ch);
     }
@@ -202,7 +207,9 @@ std::vector<DetectedHand> NullHandLandmarkProvider::detect(const cv::Mat&) {
     return {};
 }
 
-OpenCVDebugLandmarkProvider::OpenCVDebugLandmarkProvider(HandDetectorConfig config) : detector_(config) {}
+OpenCVDebugLandmarkProvider::OpenCVDebugLandmarkProvider(
+    const HandDetectorConfig& config)
+    : detector_(config) {}
 
 LandmarkProviderInfo OpenCVDebugLandmarkProvider::info() const {
     return {"opencv-heuristic", true, true};

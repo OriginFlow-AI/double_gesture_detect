@@ -50,15 +50,58 @@ cmake --build build-headless -j 2
 ctest --test-dir build-headless --output-on-failure
 ```
 
-## x86 桌面端 YOLOv8 Pose ONNX
-
-桌面端使用 OpenCV DNN 直接运行手部 YOLOv8 Pose ONNX 模型，不需要属性模型：
+日常回归建议直接使用无界面测试入口；它默认使用独立的 `build-test/`，并关闭 Qt
+Demo 和 HighGUI 采集工具，避免 CI/板端环境被桌面依赖阻塞或覆盖 `build/` 中的
+桌面目标：
 
 ```bash
-scripts/run_demo.sh /dev/video8 \
-  --landmark-backend yolov8-onnx \
-  --pose-model models/hand_pose.onnx
+scripts/test.sh
 ```
+
+需要同时验证完整桌面目标时：
+
+```bash
+DOUBLE_OK_BUILD_QT_DEMO=ON \
+DOUBLE_OK_BUILD_CAPTURE_TOOL=ON \
+BUILD_DIR=build-full scripts/test.sh
+```
+
+运行配置采用严格 JSON 类型与嵌套作用域，字段范围、稳定窗口和采集目录会在启动前
+统一校验；完整字段说明见 [运行配置说明](docs/runtime_configuration.md)。运行日志写入
+标准错误，Demo/Headless 可用 `--log-level DEBUG|INFO|WARNING|ERROR` 控制级别。
+
+## x86 桌面端 YOLOv8 Pose ONNX
+
+桌面端使用 OpenCV DNN 直接运行手部 YOLOv8 Pose ONNX。没有属性模型时会明确标为
+“实验几何规则”，用于现场调试；此时 `Unknown` 是预期手别，OK 数值是匹配分，
+不是概率。若已有 `double_ok_hand_attribute_v1`，可追加 `--model` 接入模型二。
+
+```bash
+scripts/run_demo.sh /dev/video6 \
+  --landmark-backend yolov8-onnx \
+  --pose-model models/hand_pose.onnx \
+  --disable-auto-capture \
+  --log-level INFO
+```
+
+本轮几何 fallback 已改为使用原图等距坐标，关键手势点 visibility 不足时安全判为
+非 OK，并在 NMS 限制两手之前过滤低质量 pose。界面分别显示 Pose 检测分、手别分
+和 OK 匹配分，不再把“未知手 45.8%”误写成手别置信度。但现场对照也确认当前
+`hand_pose.onnx` 会把真 OK 与张掌输出成近似甚至反向的关键点，不能靠阈值同时解决
+召回和误报；它只保留作 Pose PoC。
+
+桌面精度调试优先使用 MediaPipe Full（必须显式选择，不是生产 fallback）：
+
+```bash
+DOUBLE_OK_MEDIAPIPE_PYTHON=/path/to/mediapipe/venv/bin/python \
+scripts/run_demo.sh /dev/video6 \
+  --landmark-backend mediapipe \
+  --disable-auto-capture \
+  --log-level INFO
+```
+
+评分原理、诊断命令和精度验收边界见
+[识别精度说明](docs/recognition_accuracy.md)。
 
 当前工作区已生成 `models/hand_pose.onnx`（16,610,827 字节，SHA-256
 `5dadc44325569fb7c1901b9fd8eaee2275d1636e51f75ce4f22f1e2ada7122fc`）。该大文件

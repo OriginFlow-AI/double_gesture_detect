@@ -3,6 +3,7 @@
 #include <string>
 
 #include "double_ok_gesture/camera.hpp"
+#include "double_ok_gesture/cli.hpp"
 
 int main(int argc, char** argv) {
     try {
@@ -24,11 +25,12 @@ int main(int argc, char** argv) {
             } else if (key == "--probe") {
                 probe = true;
             } else if (key == "--width") {
-                settings.width = std::stoi(next());
+                settings.width = double_ok_gesture::parse_int_argument(next(), key);
             } else if (key == "--height") {
-                settings.height = std::stoi(next());
+                settings.height = double_ok_gesture::parse_int_argument(next(), key);
             } else if (key == "--fps") {
-                settings.fps = std::stod(next());
+                settings.fps =
+                    double_ok_gesture::parse_finite_double_argument(next(), key);
             } else if (key == "--fourcc") {
                 settings.fourcc = next();
             } else {

@@ -11,6 +11,8 @@
 #include <stdexcept>
 #include <unordered_map>
 
+#include "double_ok_gesture/cli.hpp"
+
 namespace double_ok_gesture {
 namespace {
 
@@ -33,6 +35,9 @@ std::vector<std::string> parse_csv_row(const std::string& line) {
         } else {
             field.push_back(ch);
         }
+    }
+    if (quoted) {
+        throw std::runtime_error("Unterminated quoted CSV field");
     }
     fields.push_back(field);
     return fields;
@@ -149,7 +154,11 @@ FeatureDataset load_feature_csv(const std::filesystem::path& path) {
     const std::vector<std::string> header = parse_csv_row(line);
     std::unordered_map<std::string, std::size_t> columns;
     for (std::size_t i = 0; i < header.size(); ++i) {
-        columns[header[i]] = i;
+        if (!columns.emplace(header[i], i).second) {
+            throw std::runtime_error(
+                "Duplicate CSV column '" + header[i] + "' in " +
+                path.string());
+        }
     }
     if (!columns.contains("target")) {
         throw std::runtime_error("Missing required target column in " + path.string());
@@ -187,16 +196,15 @@ FeatureDataset load_feature_csv(const std::filesystem::path& path) {
                 if (index >= row.size()) {
                     throw std::runtime_error("short row");
                 }
-                const double value = std::stod(row[index]);
-                if (!std::isfinite(value)) {
-                    throw std::runtime_error("non-finite");
-                }
+                const double value = parse_finite_double_argument(
+                    row[index], "CSV feature");
                 values.push_back(value);
             }
             if (target_index >= row.size()) {
                 throw std::runtime_error("missing target");
             }
-            const int target = std::stoi(row[target_index]);
+            const int target = parse_int_argument(
+                row[target_index], "CSV target");
             if (target != 0 && target != 1) {
                 throw std::runtime_error("invalid target");
             }
@@ -267,9 +275,20 @@ LinearModelArtifact train_logistic_regression(
     if (max_iter < 1) {
         throw std::invalid_argument("max_iter must be at least 1");
     }
+    if (!std::isfinite(learning_rate) || learning_rate <= 0.0) {
+        throw std::invalid_argument(
+            "learning_rate must be finite and positive");
+    }
+    if (!std::isfinite(l2) || l2 < 0.0) {
+        throw std::invalid_argument("l2 must be finite and non-negative");
+    }
     validate_training_data(x, y);
     const std::size_t rows = x.size();
     const std::size_t cols = x.front().size();
+    if (!feature_columns.empty() && feature_columns.size() != cols) {
+        throw std::invalid_argument(
+            "feature_columns must match the training feature count");
+    }
 
     LinearModelArtifact artifact;
     artifact.feature_columns = feature_columns;
@@ -334,6 +353,13 @@ LinearModelArtifact train_logistic_regression(
 }
 
 std::vector<double> predict_scores(const LinearModelArtifact& artifact, const std::vector<std::vector<double>>& x) {
+    if (artifact.coef.empty() ||
+        artifact.mean.size() != artifact.coef.size() ||
+        artifact.scale.size() != artifact.coef.size() ||
+        !std::isfinite(artifact.intercept)) {
+        throw std::invalid_argument(
+            "Prediction model has inconsistent vector lengths or intercept");
+    }
     std::vector<double> scores;
     scores.reserve(x.size());
     for (const auto& row : x) {
@@ -342,6 +368,13 @@ std::vector<double> predict_scores(const LinearModelArtifact& artifact, const st
         }
         double raw = artifact.intercept;
         for (std::size_t col = 0; col < row.size(); ++col) {
+            if (!std::isfinite(row[col]) ||
+                !std::isfinite(artifact.mean[col]) ||
+                !std::isfinite(artifact.scale[col]) ||
+                !std::isfinite(artifact.coef[col])) {
+                throw std::invalid_argument(
+                    "Prediction data and model must contain finite values");
+            }
             const double scale = std::abs(artifact.scale[col]) < 1e-12 ? 1.0 : artifact.scale[col];
             raw += ((row[col] - artifact.mean[col]) / scale) * artifact.coef[col];
         }

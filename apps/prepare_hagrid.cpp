@@ -8,6 +8,7 @@
 #include <string>
 #include <vector>
 
+#include "double_ok_gesture/cli.hpp"
 #include "double_ok_gesture/features.hpp"
 #include "double_ok_gesture/json.hpp"
 
@@ -53,7 +54,8 @@ Args parse_args(int argc, char** argv) {
         } else if (key == "--positive-label") {
             args.positive_label = lower(next());
         } else if (key == "--max-negative-per-class") {
-            args.max_negative_per_class = std::stoi(next());
+            args.max_negative_per_class =
+                double_ok_gesture::parse_int_argument(next(), key);
         } else if (key == "--negative-labels") {
             args.negative_labels.clear();
             while (i + 1 < argc && std::string(argv[i + 1]).rfind("--", 0) != 0) {
@@ -178,8 +180,15 @@ int main(int argc, char** argv) {
         if (!std::filesystem::is_directory(args.annotations_dir)) {
             throw std::runtime_error("Not a directory: " + args.annotations_dir.string());
         }
-        std::filesystem::create_directories(args.output.parent_path());
-        const auto temporary = args.output.parent_path() / ("." + args.output.filename().string() + ".tmp");
+        if (args.output.empty() || args.output.filename().empty()) {
+            throw std::invalid_argument("--output must name a CSV file");
+        }
+        const auto output_directory = args.output.parent_path();
+        if (!output_directory.empty()) {
+            std::filesystem::create_directories(output_directory);
+        }
+        const auto temporary = output_directory /
+            ("." + args.output.filename().string() + ".tmp");
         std::ofstream out(temporary);
         if (!out) {
             throw std::runtime_error("Cannot write output CSV: " + temporary.string());
@@ -258,6 +267,10 @@ int main(int argc, char** argv) {
             }
         }
         out.close();
+        if (!out) {
+            throw std::runtime_error(
+                "Cannot finish output CSV: " + temporary.string());
+        }
         std::filesystem::rename(temporary, args.output);
         if (skipped_invalid > 0) {
             std::cerr << "Skipped " << skipped_invalid << " invalid landmark rows\n";

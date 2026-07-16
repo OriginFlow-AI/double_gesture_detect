@@ -215,6 +215,10 @@ void validate_options(const DecodeOptions &options) {
   require_probability(options.nms_iou_threshold, "nms_iou_threshold");
   require_probability(options.min_keypoint_visibility,
                       "min_keypoint_visibility");
+  if (options.min_reliable_keypoints > kHandKeypointCount) {
+    throw std::invalid_argument(
+        "min_reliable_keypoints must be between 0 and 21");
+  }
   if (options.max_hands < 1 || options.max_hands > 2) {
     throw std::invalid_argument("max_hands must be 1 or 2");
   }
@@ -578,6 +582,12 @@ decode_flat_pose(const FloatTensorView &output,
       point.reliable =
           point.visibility >= options.min_keypoint_visibility;
     }
+    const std::size_t reliable = static_cast<std::size_t>(std::count_if(
+        pose.keypoints.begin(), pose.keypoints.end(),
+        [](const Keypoint &point) { return point.reliable; }));
+    if (reliable < options.min_reliable_keypoints) {
+      continue;
+    }
     candidates.push_back(std::move(pose));
   }
 
@@ -666,6 +676,12 @@ decode_three_scale_pose(const std::array<FeatureMapView, 3> &features,
           pose.keypoints[keypoint] = decode_keypoint(
               keypoints, keypoint_candidates, pose.candidate_index, keypoint,
               location, options.min_keypoint_visibility);
+        }
+        const std::size_t reliable = static_cast<std::size_t>(std::count_if(
+            pose.keypoints.begin(), pose.keypoints.end(),
+            [](const Keypoint &point) { return point.reliable; }));
+        if (reliable < options.min_reliable_keypoints) {
+          continue;
         }
         candidates.push_back(std::move(pose));
       }

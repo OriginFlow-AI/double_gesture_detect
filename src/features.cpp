@@ -55,6 +55,11 @@ double sigmoid(double value) {
     return 1.0 / (1.0 + std::exp(-value));
 }
 
+double smoothstep(double lower, double upper, double value) {
+    const double normalized = std::clamp((value - lower) / (upper - lower), 0.0, 1.0);
+    return normalized * normalized * (3.0 - 2.0 * normalized);
+}
+
 double angle(const Landmarks& points, int a, int b, int c) {
     const Point3 ab = points[static_cast<std::size_t>(a)] - points[static_cast<std::size_t>(b)];
     const Point3 cb = points[static_cast<std::size_t>(c)] - points[static_cast<std::size_t>(b)];
@@ -125,18 +130,44 @@ double finger_extension(const Landmarks& normalized_landmarks, const std::string
 }
 
 GeometryScores geometry_scores(const Landmarks& landmarks, const std::string& handedness) {
+    validate_landmarks(landmarks);
+    const double palm_extent = std::max(
+        distance(landmarks, WRIST, MIDDLE_MCP),
+        distance(landmarks, INDEX_MCP, PINKY_MCP));
+    if (palm_extent < 1e-6) {
+        // A collapsed pose contains no usable hand geometry.  In particular,
+        // coincident tips must not look like a perfect pinch.
+        return {};
+    }
+
     const Landmarks points = normalize_landmarks(landmarks, handedness);
     const double pinch = distance(points, THUMB_TIP, INDEX_TIP);
-    const double pinch_score = std::exp(-std::pow(pinch / 0.28, 2.0));
+    // Pose estimators are least accurate where the thumb and index finger
+    // occlude one another.  Use a wider, continuous tolerance than the old
+    // endpoint Gaussian, while retaining the historical hand-length scale.
+    const double pinch_quality = std::exp(-std::pow(pinch / 0.75, 2.0));
 
     const double middle_ext = finger_extension(points, "middle");
     const double ring_ext = finger_extension(points, "ring");
     const double pinky_ext = finger_extension(points, "pinky");
     const double open_mean = (middle_ext + ring_ext + pinky_ext) / 3.0;
+    const double index_ext = finger_extension(points, "index");
 
-    const double index_thumb_mcp_gap = distance(points, THUMB_MCP, INDEX_MCP);
-    const double circle_gap_score = std::exp(-std::pow(pinch / std::max(index_thumb_mcp_gap, 0.15), 2.0));
-    const double ok_score = std::clamp(0.58 * pinch_score + 0.30 * open_mean + 0.12 * circle_gap_score, 0.0, 1.0);
+    // OK is a conjunction: the pinch alone is insufficient when the other
+    // three fingers are folded.  This removes the old formula's >= 0.70
+    // lower bound for any pose whose two tips happened to overlap.
+    const double open_quality = smoothstep(0.45, 0.80, open_mean);
+    // A true OK ring also bends the index finger. This independent negative
+    // constraint keeps an open palm with noisy/overlapping tip predictions
+    // well away from the decision threshold.
+    const double index_bend_quality =
+        1.0 - smoothstep(0.70, 0.82, index_ext);
+    const double shape_quality =
+        open_quality * (0.50 + 0.50 * index_bend_quality);
+    const double ok_score = std::clamp(
+        pinch_quality * (0.25 + 0.75 * shape_quality),
+        0.0,
+        1.0);
 
     return {pinch, middle_ext, ring_ext, pinky_ext, open_mean, ok_score};
 }

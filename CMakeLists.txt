@@ -2,11 +2,13 @@ cmake_minimum_required(VERSION 3.20)
 
 project(double_ok_gesture VERSION 0.2.0 LANGUAGES CXX)
 
+include(CTest)
+
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-find_package(OpenCV REQUIRED COMPONENTS core dnn imgproc imgcodecs videoio highgui)
+find_package(OpenCV REQUIRED COMPONENTS core dnn imgproc imgcodecs videoio)
 
 option(DOUBLE_OK_BUILD_QT_DEMO "Build the Qt live dashboard demo" ON)
 option(DOUBLE_OK_BUILD_CAPTURE_TOOL "Build the desktop OpenCV HighGUI capture tool" ON)
@@ -16,6 +18,7 @@ set(RKNN_ROOT "" CACHE PATH
 
 set(DOUBLE_OK_CORE_SOURCES
     src/camera.cpp
+    src/cli.cpp
     src/capture_writer.cpp
     src/capture_gate.cpp
     src/config.cpp
@@ -131,41 +134,42 @@ if(DOUBLE_OK_BUILD_QT_DEMO)
 endif()
 
 if(DOUBLE_OK_BUILD_CAPTURE_TOOL)
+    find_package(OpenCV REQUIRED COMPONENTS highgui)
+    # Some distro OpenCV packages build HighGUI with Qt but do not expose all
+    # Qt libraries through the opencv_highgui CMake target.
     find_package(PkgConfig REQUIRED)
-    pkg_check_modules(QT5_GUI REQUIRED Qt5Widgets Qt5Test Qt5OpenGL)
+    pkg_check_modules(QT5_HIGHGUI REQUIRED Qt5Widgets Qt5Test Qt5OpenGL)
     add_double_ok_executable(double-ok-capture apps/capture_samples.cpp)
-    target_include_directories(double-ok-capture PRIVATE ${QT5_GUI_INCLUDE_DIRS})
-    target_compile_options(double-ok-capture PRIVATE ${QT5_GUI_CFLAGS_OTHER})
-    target_link_libraries(double-ok-capture PRIVATE opencv_highgui ${QT5_GUI_LIBRARIES})
+    target_include_directories(
+        double-ok-capture PRIVATE ${QT5_HIGHGUI_INCLUDE_DIRS})
+    target_compile_options(
+        double-ok-capture PRIVATE ${QT5_HIGHGUI_CFLAGS_OTHER})
+    target_link_libraries(
+        double-ok-capture PRIVATE opencv_highgui ${QT5_HIGHGUI_LIBRARIES})
 endif()
 
-enable_testing()
-add_executable(double_ok_gesture_tests tests/cpp/test_core.cpp)
-target_link_libraries(double_ok_gesture_tests PRIVATE double_ok_gesture_core double_ok_gesture_demo_app)
-target_compile_options(double_ok_gesture_tests PRIVATE -Wall -Wextra -Wpedantic)
-add_test(NAME double_ok_gesture_tests COMMAND double_ok_gesture_tests)
+if(BUILD_TESTING)
+    function(add_double_ok_test target source)
+        add_executable(${target} ${source})
+        target_link_libraries(${target} PRIVATE double_ok_gesture_core ${ARGN})
+        target_compile_options(${target} PRIVATE -Wall -Wextra -Wpedantic)
+        add_test(NAME ${target} COMMAND ${target})
+    endfunction()
 
-add_executable(
-    double_ok_yolov8_pose_tests
-    tests/cpp/test_yolov8_pose_postprocess.cpp)
-target_link_libraries(
-    double_ok_yolov8_pose_tests PRIVATE double_ok_gesture_core)
-target_compile_options(
-    double_ok_yolov8_pose_tests PRIVATE -Wall -Wextra -Wpedantic)
-add_test(
-    NAME double_ok_yolov8_pose_tests
-    COMMAND double_ok_yolov8_pose_tests)
-
-add_executable(
-    double_ok_model_replacement_tests
-    tests/cpp/test_model_replacement.cpp)
-target_link_libraries(
-    double_ok_model_replacement_tests PRIVATE double_ok_gesture_core)
-target_compile_definitions(
-    double_ok_model_replacement_tests
-    PRIVATE DOUBLE_OK_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
-target_compile_options(
-    double_ok_model_replacement_tests PRIVATE -Wall -Wextra -Wpedantic)
-add_test(
-    NAME double_ok_model_replacement_tests
-    COMMAND double_ok_model_replacement_tests)
+    add_double_ok_test(
+        double_ok_gesture_tests
+        tests/cpp/test_core.cpp
+        double_ok_gesture_demo_app)
+    add_double_ok_test(
+        double_ok_config_io_tests
+        tests/cpp/test_config_io.cpp)
+    add_double_ok_test(
+        double_ok_yolov8_pose_tests
+        tests/cpp/test_yolov8_pose_postprocess.cpp)
+    add_double_ok_test(
+        double_ok_model_replacement_tests
+        tests/cpp/test_model_replacement.cpp)
+    target_compile_definitions(
+        double_ok_model_replacement_tests
+        PRIVATE DOUBLE_OK_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
+endif()

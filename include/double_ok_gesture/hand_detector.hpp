@@ -16,7 +16,7 @@ struct HandDetectorConfig {
 
 class OpenCVHandDetector {
 public:
-    explicit OpenCVHandDetector(HandDetectorConfig config = {});
+    explicit OpenCVHandDetector(const HandDetectorConfig& config = {});
 
     std::vector<DetectedHand> detect(const cv::Mat& frame_bgr) const;
 

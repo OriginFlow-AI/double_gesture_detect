@@ -1,20 +1,29 @@
 #include "double_ok_gesture/camera.hpp"
 
 #include <algorithm>
+#include <charconv>
 #include <chrono>
 #include <cmath>
 #include <fstream>
 #include <sstream>
 #include <stdexcept>
+#include <system_error>
 #include <thread>
+
+#include "double_ok_gesture/runtime.hpp"
 
 namespace double_ok_gesture {
 namespace {
 
-bool is_decimal(const std::string& value) {
-    return !value.empty() && std::all_of(value.begin(), value.end(), [](unsigned char ch) {
-        return std::isdigit(ch) != 0;
-    });
+std::optional<int> decimal_index(const std::string& value) {
+    int index = 0;
+    const auto parsed = std::from_chars(
+        value.data(), value.data() + value.size(), index);
+    if (value.empty() || parsed.ec != std::errc{} ||
+        parsed.ptr != value.data() + value.size() || index < 0) {
+        return std::nullopt;
+    }
+    return index;
 }
 
 std::string read_device_name(const std::filesystem::path& path) {
@@ -33,12 +42,12 @@ int video_index(const std::filesystem::path& path) {
         return std::numeric_limits<int>::max();
     }
     const std::string suffix = name.substr(5);
-    return is_decimal(suffix) ? std::stoi(suffix) : std::numeric_limits<int>::max();
+    return decimal_index(suffix).value_or(std::numeric_limits<int>::max());
 }
 
 cv::VideoCapture create_capture(const std::string& source) {
-    if (is_decimal(source)) {
-        return cv::VideoCapture(std::stoi(source), cv::CAP_V4L2);
+    if (const auto index = decimal_index(source)) {
+        return cv::VideoCapture(*index, cv::CAP_V4L2);
     }
     return cv::VideoCapture(source, cv::CAP_V4L2);
 }
@@ -134,7 +143,10 @@ const CameraInfo& CameraStream::info() const {
 }
 
 std::string normalize_camera_source_text(const std::string& source) {
-    return is_decimal(source) ? std::to_string(std::stoi(source)) : source;
+    if (const auto index = decimal_index(source)) {
+        return std::to_string(*index);
+    }
+    return source;
 }
 
 std::vector<VideoDevice> list_video_devices(const std::filesystem::path& sys_class_path) {
@@ -195,18 +207,38 @@ CameraStream open_camera(const CameraConfig& settings) {
 
     std::string last_error = "camera did not open";
     for (int attempt = 1; attempt <= settings.open_retries; ++attempt) {
+        log_message(
+            LogLevel::Debug,
+            "opening camera " + settings.source + " (attempt " +
+                std::to_string(attempt) + "/" +
+                std::to_string(settings.open_retries) + ")");
         cv::VideoCapture capture = create_capture(settings.source);
         if (!capture.isOpened()) {
             last_error = "backend could not open the device";
         } else {
             configure_capture(capture, settings);
             if (auto frame = read_warmup_frame(capture, settings.warmup_reads)) {
-                return CameraStream(std::move(capture), settings, camera_info(capture, settings), *frame);
+                // Function argument evaluation order must not decide whether
+                // camera_info observes a moved-from VideoCapture.
+                CameraInfo info = camera_info(capture, settings);
+                log_message(
+                    LogLevel::Info,
+                    "camera ready: source=" + info.source + ", backend=" +
+                        info.backend + ", size=" +
+                        std::to_string(info.width) + "x" +
+                        std::to_string(info.height) + ", fps=" +
+                        std::to_string(info.fps) + ", fourcc=" + info.fourcc);
+                return CameraStream(
+                    std::move(capture), settings, std::move(info), *frame);
             }
             last_error = "device opened but did not return a frame";
         }
         capture.release();
         if (attempt < settings.open_retries) {
+            log_message(
+                LogLevel::Warning,
+                "camera open attempt failed: source=" + settings.source +
+                    ", reason=" + last_error);
             std::this_thread::sleep_for(std::chrono::duration<double>(settings.retry_delay_sec));
         }
     }

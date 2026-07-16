@@ -38,6 +38,30 @@ enum LandmarkIndex {
     PINKY_TIP = 20,
 };
 
+// The fallback scorer needs these points for its origin/scale, pinch and
+// three-open-finger evidence. Pose providers use the same list for a
+// visibility gate so both ONNX and RKNN debug behavior stays aligned.
+inline constexpr std::array<int, 18> kGeometryRequiredLandmarkIndices = {
+    WRIST,
+    THUMB_TIP,
+    INDEX_MCP,
+    INDEX_PIP,
+    INDEX_DIP,
+    INDEX_TIP,
+    MIDDLE_MCP,
+    MIDDLE_PIP,
+    MIDDLE_DIP,
+    MIDDLE_TIP,
+    RING_MCP,
+    RING_PIP,
+    RING_DIP,
+    RING_TIP,
+    PINKY_MCP,
+    PINKY_PIP,
+    PINKY_DIP,
+    PINKY_TIP,
+};
+
 struct GeometryScores {
     double pinch = 0.0;
     double middle_extension = 0.0;
