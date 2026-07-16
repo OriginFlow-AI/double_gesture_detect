@@ -1,23 +1,38 @@
 # Double OK Gesture Capture Gate
 
-在 GLASSES 端开始采集前，确认以下条件同时满足：
+本分支以 `261902a4`（0612）为用户可见基准：奥比相机、Qt 深色 dashboard、
+21 点骨架、时序稳定、五项采集门控、截图/采集流程和 CLI 操作保持原有方式；
+模型路径替换为：
 
-1. 眼镜姿态在允许范围内。
-2. 两只手完整进入相机 FOV 的中心区域。
-3. 两只手保持足够距离。
-4. 两只手稳定做出 OK 手势。
+```text
+Orbbec BGR
+-> YOLOv8n-Pose RKNN (box + 21 x/y/visibility)
+-> Left/Right + OK dual-output hand attribute model
+-> stable Double-OK
+-> existing capture gate and Qt GUI
+```
 
-全部满足时门控返回 `ready=true`，采集流程才保存画面或触发下一步动作。
+完整合同与当前阻塞见 [0612 双模型替换说明](docs/model_replacement_0612.md)，分层边界见
+[架构说明](docs/architecture.md)。
 
-## 当前说明
+## 当前真实状态
 
-当前 `main` 分支保留 C++/Qt 实现，这是为了部署和运行环境需要；功能目标、门控逻辑、报告内容和用户可见流程以 `dev_` 的双手 OK 采集门控为主。GUI 边框和深色仪表盘样式沿用 `dev_` 的视觉方向。
+- 模型一已存在：`models/rk3588/hand_pose_640_fp.rknn`，RK3588、640×640、FP。
+- 模型一 size/SHA/manifest 和纯 CPU 后处理已检查；真实 tensor 仍须在 RK3588 上
+  通过 RKNN Runtime query 验证。
+- 模型二的双输出接口已实现，但仓库没有训练权重，也没有足够的 Gemini 335
+  目标域标注数据。
+- 生产 `yolov8-rknn` 初始化会因模型二缺失明确失败，不会回退到 JSON、MediaPipe、
+  OpenCV heuristic 或几何规则。
+- 未完成真板和目标域评估，不能宣称生产可用或精度达标。
 
-统一口径见 [docs/current_main_contract.md](docs/current_main_contract.md)，架构分层见 [docs/architecture.md](docs/architecture.md)。
+## 依赖和本机构建
 
-## 环境安装
-
-项目当前使用 CMake 构建 C++ 程序：
+- CMake 3.20+
+- C++20 编译器（保持 0612 工程基准）
+- OpenCV 4（包含 DNN 模块）
+- Qt5 Widgets（只用于实时 Demo）
+- RK3588 板端需要 BSP 匹配的 RKNN Runtime
 
 ```bash
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
@@ -25,127 +40,79 @@ cmake --build build -j 2
 ctest --test-dir build --output-on-failure
 ```
 
-依赖：
-
-- CMake 3.20+
-- C++20 编译器
-- OpenCV 4
-- Qt5 Widgets（默认实时 dashboard 构建需要；无 Qt/headless 构建可关闭 `DOUBLE_OK_BUILD_QT_DEMO` 和 `DOUBLE_OK_BUILD_CAPTURE_TOOL`）
-- Python MediaPipe（桌面调试真实 21 点需要；`scripts/run_demo.sh` 会优先使用 `.venv/bin/python`）
-
-## 核心流程
-
-```text
-摄像头 BGR 帧
--> MediaPipe 风格的两只手 21 点 landmarks
--> 每只手提取 21 点归一化特征
--> 模型或几何规则判断单手 OK
--> 时间窗口判断稳定双手 OK
--> 姿态、完整入框、中心位置、双手距离门控
--> ready / 阻断原因
-```
-
-## 实时运行
-
-先确认 Orbbec 设备可以打开：
+无 Qt 构建：
 
 ```bash
-scripts/check_camera.sh
+cmake -S . -B build-headless -DCMAKE_BUILD_TYPE=Release \
+  -DDOUBLE_OK_BUILD_QT_DEMO=OFF \
+  -DDOUBLE_OK_BUILD_CAPTURE_TOOL=OFF
+cmake --build build-headless -j 2
+ctest --test-dir build-headless --output-on-failure
 ```
 
-启动实时界面：
+## x86 桌面端 YOLOv8 Pose ONNX
+
+桌面端使用 OpenCV DNN 直接运行手部 YOLOv8 Pose ONNX 模型，不需要属性模型：
 
 ```bash
-scripts/run_demo.sh
+scripts/run_demo.sh /dev/video8 \
+  --landmark-backend yolov8-onnx \
+  --pose-model models/hand_pose.onnx
 ```
 
-默认脚本会优先启用 `mediapipe` 后端：C++/Qt 仍是主入口，后台 sidecar 使用 `dev_` 同源的 MediaPipe Hands 输出真实 21 点关键点。也可以显式指定：
+当前工作区已生成 `models/hand_pose.onnx`（16,610,827 字节，SHA-256
+`5dadc44325569fb7c1901b9fd8eaee2275d1636e51f75ce4f22f1e2ada7122fc`）。该大文件
+受 `.gitignore` 管理，不会随源码提交；重新克隆后仍需单独复制。模型是未经
+end-to-end NMS 的标准单输出 Ultralytics Pose 导出，单类别 `hand`、21 个关键点；
+输出支持 `[1,68,candidates]` 和 `[1,candidates,68]`。程序执行 letterbox、
+OpenCV DNN 推理、置信度过滤、NMS、坐标还原，并把关键点送入现有 Qt 骨架显示。
+模型缺失或输出合同不匹配时会直接报错，不会回退到 JSON、MediaPipe 或启发式后端。
+模型来源、固定提交、校验值及许可边界见 [模型说明](models/README.md)。
+
+## 奥比相机和 GUI
+
+先检查 Gemini 335 彩色节点：
 
 ```bash
-scripts/run_demo.sh --landmark-backend mediapipe
+scripts/check_camera.sh /dev/video6
 ```
 
-如果 MediaPipe 环境不可用，只想查看界面和候选框，可以显式启用调试候选检测：
+RK3588 上使用真实双模型运行；`--model` 是模型二，不是 pose 模型：
 
 ```bash
-scripts/run_demo.sh --landmark-backend opencv-heuristic
+scripts/run_demo.sh /dev/video6 \
+  --width 640 --height 480 --camera-fps 30 --fourcc MJPG \
+  --landmark-backend yolov8-rknn \
+  --pose-model models/rk3588/hand_pose_640_fp.rknn \
+  --pose-manifest models/rk3588/hand_pose_640_fp.rknn.manifest.json \
+  --model /path/to/trained_hand_attribute_v1.json
 ```
 
-`opencv-heuristic` 只显示候选框，不显示 21 点关键点；真实关键点使用 `mediapipe` 桌面对齐后端或后续 RKNN hand-landmark 后端。
+按 `Q` 或 `Esc` 退出，按 `S` 保存 dashboard 截图，`--fullscreen` 全屏，
+`--dashboard-width/--dashboard-height` 调整窗口渲染尺寸。
 
-如果只是要验证 C++ GUI 的 21 点骨架显示链路，可以使用外部 landmark JSON：
+显式 JSON 仅验证相机、GUI 和 21 点显示链，窗口会标注“测试后端 / 非 YOLOv8 推理”：
 
 ```bash
-scripts/run_demo.sh --landmark-backend landmarks-json --landmarks-json configs/debug_landmarks.json
+scripts/run_demo.sh /dev/video6 \
+  --landmark-backend landmarks-json \
+  --landmarks-json configs/debug_landmarks.json
 ```
 
-这会把 JSON 中的 21 点画到实时画面上；它验证的是显示链路，不是摄像头模型检测精度。
+静态 HTML 报告由 `scripts/gui_report.sh` 生成，它不是实时推理程序。
 
-脚本会优先探测 Orbbec Gemini 335 并选择第一个能打开、能出帧的彩色视频节点；当前机器可用节点是 `/dev/video2`。需要改用内置摄像头时，显式传入 `/dev/video0`。
-
-实时窗口采用仪表盘布局：
-
-- 左侧显示实时画面、手部骨架或候选框、目标区域和操作提示。
-- 右侧显示五项门控进度、左右手置信度、模型和设备状态。
-- 顶部显示最终状态、FPS、处理延迟和摄像头。
-
-Qt dashboard 已拆到独立 UI 模块，CLI/headless 已拆到非 Qt app 模块，运行命令和用户可见流程不变；`apps/demo.cpp` 只保留 main 装配。
-
-按 `Q` 或 `Esc` 退出，按 `S` 保存界面截图到 `reports/live/`。使用 `--fullscreen` 可进入全屏，使用 `--dashboard-width` 和 `--dashboard-height` 可调整渲染尺寸。
-
-## 姿态输入
-
-GLASSES 端可持续写入包含完整角度的 JSON 文件：
-
-```json
-{"pitch": 0.0, "roll": 0.0, "yaw": 0.0}
-```
-
-启用姿态门控：
+## RK3588 交叉编译
 
 ```bash
-scripts/run_demo.sh \
-  --capture-gate \
-  --require-glasses-pose \
-  --glasses-pose /path/to/glasses_pose.json
+export RK3588_TOOLCHAIN_PREFIX=/opt/rk3588-toolchain/bin/aarch64-linux-gnu-
+export RK3588_SYSROOT=/opt/rk3588-sysroot
+scripts/build_rk3588.sh
 ```
 
-当文件正在被替换、JSON 暂时不完整或缺少任一角度时，门控返回“等待眼镜姿态数据”，不会误判为姿态合格。
+工具链、sysroot、OpenCV 和板端 RKNN driver/Runtime 必须来自兼容的 RK3588 BSP。
 
-## 训练与评估
+## 旧工具边界
 
-```bash
-scripts/prepare_hagrid.sh data/raw/hagrid/annotations
-scripts/train_numpy_logreg.sh
-scripts/evaluate_numpy_logreg.sh
-```
-
-负样本上限按 `split + gesture_label` 分别计算，避免某个 split 抢占全部负样本。评估默认选择 `test`，没有 `test` 时选择 `val`，不会默认在训练全集上报告指标。
-
-## 本地采集
-
-当前 `double-ok-capture` 是手动采集工具，按空格保存原始帧：
-
-```bash
-build/double-ok-capture --label double_ok --camera /dev/video0
-```
-
-需要门控自动采集时，使用实时 demo；只有门控 ready 时才会写盘：
-
-```bash
-scripts/run_demo.sh --capture-gate
-```
-
-采集负样本时，门控应要求双手完整、居中并保持间距，同时明确阻止双手 OK，避免标签污染。
-
-## 测试与报告
-
-```bash
-scripts/test.sh
-scripts/gui_report.sh
-xdg-open reports/gui/index.html
-```
-
-静态数据与门控模拟报告输出到 `reports/gui/index.html`；实时测试界面由 `scripts/run_demo.sh` 启动。
-
-所有识别与门控阈值集中在 `configs/default.json`。
+历史 MediaPipe/JSON/OpenCV/OK-only 训练工具仍保留，以免破坏 0612 的显式调试和
+离线入口；它们不是 `yolov8-rknn` 的自动 fallback。历史 OK-only 模型使用的特征
+合同不兼容 YOLOv8 的二维关键点，不能冒充模型二。

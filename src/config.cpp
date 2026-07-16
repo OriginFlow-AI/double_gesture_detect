@@ -67,6 +67,13 @@ void set_if_present(std::filesystem::path& target, const std::string& text, cons
     }
 }
 
+void require_probability(double value, const char* name) {
+    if (!std::isfinite(value) || value < 0.0 || value > 1.0) {
+        throw std::invalid_argument(
+            std::string(name) + " must be finite and in [0,1]");
+    }
+}
+
 }  // namespace
 
 RuntimeConfig load_runtime_config(const std::filesystem::path& path) {
@@ -79,6 +86,62 @@ RuntimeConfig load_runtime_config(const std::filesystem::path& path) {
     set_if_present(config.recognizer.stable_min_positive, text, "stable_min_positive");
     set_if_present(config.recognizer.min_detection_confidence, text, "min_detection_confidence");
     set_if_present(config.recognizer.min_tracking_confidence, text, "min_tracking_confidence");
+    set_if_present(
+        config.recognizer.handedness_confidence_threshold,
+        text,
+        "handedness_confidence_threshold");
+    set_if_present(config.recognizer.input_mirrored, text, "input_mirrored");
+
+    set_if_present(config.yolov8_pose.model_path, text, "pose_model_path");
+    set_if_present(
+        config.yolov8_pose.manifest_path, text, "pose_manifest_path");
+    set_if_present(config.yolov8_pose.input_size, text, "pose_input_size");
+    set_if_present(
+        config.yolov8_pose.min_detection_confidence,
+        text,
+        "pose_min_detection_confidence");
+    set_if_present(
+        config.yolov8_pose.min_keypoint_visibility,
+        text,
+        "pose_min_keypoint_visibility");
+    set_if_present(
+        config.yolov8_pose.nms_iou_threshold,
+        text,
+        "pose_nms_iou_threshold");
+    set_if_present(
+        config.yolov8_pose.min_reliable_keypoints,
+        text,
+        "pose_min_reliable_keypoints");
+    set_if_present(
+        config.hand_attribute.model_path,
+        text,
+        "attribute_model_path");
+    if (config.yolov8_pose.input_size < 32 ||
+        config.yolov8_pose.input_size % 32 != 0) {
+        throw std::invalid_argument(
+            "pose_input_size must be at least 32 and divisible by 32");
+    }
+    if (config.yolov8_pose.min_reliable_keypoints < 1 ||
+        config.yolov8_pose.min_reliable_keypoints > 21) {
+        throw std::invalid_argument(
+            "pose_min_reliable_keypoints must be in [1,21]");
+    }
+    require_probability(
+        config.yolov8_pose.min_detection_confidence,
+        "pose_min_detection_confidence");
+    require_probability(
+        config.yolov8_pose.min_keypoint_visibility,
+        "pose_min_keypoint_visibility");
+    require_probability(
+        config.yolov8_pose.nms_iou_threshold,
+        "pose_nms_iou_threshold");
+    require_probability(
+        config.recognizer.handedness_confidence_threshold,
+        "handedness_confidence_threshold");
+    if (config.recognizer.handedness_confidence_threshold < 0.5) {
+        throw std::invalid_argument(
+            "handedness_confidence_threshold must be at least 0.5");
+    }
 
     set_if_present(config.capture_gate.require_glasses_pose, text, "require_glasses_pose");
     set_if_present(config.capture_gate.pitch_min, text, "pitch_min");

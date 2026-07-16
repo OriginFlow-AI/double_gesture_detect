@@ -21,6 +21,7 @@ struct QtDashboardOptions {
     std::optional<std::filesystem::path> glasses_pose;
     LandmarkBackend landmark_backend = LandmarkBackend::Rknn;
     std::optional<std::filesystem::path> model_path;
+    std::optional<std::filesystem::path> pose_model_path;
 };
 
 class QtDashboard {

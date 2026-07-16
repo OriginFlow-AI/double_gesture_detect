@@ -18,6 +18,7 @@
 namespace double_ok_gesture {
 
 enum class LandmarkBackend {
+    Onnx,
     Rknn,
     MediaPipe,
     LandmarksJson,
@@ -29,6 +30,8 @@ struct RuntimeOptions {
     CameraConfig camera;
     std::filesystem::path config_path = "configs/default.json";
     std::optional<std::filesystem::path> model_path;
+    std::optional<std::filesystem::path> pose_model_path;
+    std::optional<std::filesystem::path> pose_manifest_path;
     std::optional<double> threshold;
     bool require_glasses_pose = false;
     std::optional<std::filesystem::path> capture_output_dir;
@@ -57,6 +60,7 @@ struct RuntimeFrameResult {
     DoubleOKResult result;
     std::optional<CaptureGateDecision> decision;
     double started = 0.0;
+    double inference_ms = 0.0;
 };
 
 LandmarkBackend landmark_backend_from_string(const std::string& value);

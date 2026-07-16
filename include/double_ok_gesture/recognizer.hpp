@@ -7,9 +7,18 @@
 #include <vector>
 
 #include "double_ok_gesture/features.hpp"
+#include "double_ok_gesture/hand_attribute_classifier.hpp"
 #include "double_ok_gesture/model_io.hpp"
 
 namespace double_ok_gesture {
+
+struct HandBoundingBox {
+    double xmin = 0.0;
+    double ymin = 0.0;
+    double xmax = 0.0;
+    double ymax = 0.0;
+    double detection_score = 0.0;
+};
 
 struct HandPrediction {
     std::string handedness = "Unknown";
@@ -17,6 +26,9 @@ struct HandPrediction {
     bool is_ok = false;
     Landmarks landmarks{};
     bool landmarks_estimated = false;
+    std::optional<LandmarkConfidences> landmark_confidences = std::nullopt;
+    std::optional<HandBoundingBox> box = std::nullopt;
+    double handedness_confidence = 0.0;
 };
 
 struct DoubleOKResult {
@@ -31,6 +43,8 @@ struct DetectedHand {
     std::string handedness = "Unknown";
     std::optional<double> ok_score;
     bool landmarks_estimated = false;
+    std::optional<LandmarkConfidences> landmark_confidences = std::nullopt;
+    std::optional<HandBoundingBox> box = std::nullopt;
 };
 
 class OKHandClassifier {
@@ -59,7 +73,9 @@ public:
     DoubleOKRecognizer(
         OKHandClassifier classifier = OKHandClassifier(),
         std::size_t stable_window = 5,
-        std::size_t stable_min_positive = 3);
+        std::size_t stable_min_positive = 3,
+        std::optional<HandAttributeClassifier> attribute_classifier =
+            std::nullopt);
 
     DoubleOKResult process_hands(const std::vector<DetectedHand>& hands);
     void reset();
@@ -69,6 +85,7 @@ private:
     std::size_t stable_min_positive_ = 3;
     std::deque<bool> history_;
     std::size_t history_limit_ = 5;
+    std::optional<HandAttributeClassifier> attribute_classifier_;
 };
 
 double bounded_score(double score);

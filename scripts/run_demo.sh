@@ -7,6 +7,7 @@ CMAKE_BUILD_TYPE="${CMAKE_BUILD_TYPE:-Release}"
 JOBS="${JOBS:-2}"
 LIST_CAMERAS=0
 HAS_LANDMARK_BACKEND=0
+HAS_ATTRIBUTE_MODEL=0
 EXPLICIT_CAMERA=0
 
 for arg in "$@"; do
@@ -16,6 +17,9 @@ for arg in "$@"; do
   fi
   if [[ "$arg" == "--landmark-backend" ]]; then
     HAS_LANDMARK_BACKEND=1
+  fi
+  if [[ "$arg" == "--model" ]]; then
+    HAS_ATTRIBUTE_MODEL=1
   fi
 done
 
@@ -60,7 +64,15 @@ elif [[ $# -gt 0 && "$1" != --* ]]; then
   shift
 fi
 
-cmake -S . -B "$BUILD_DIR" -DCMAKE_BUILD_TYPE="$CMAKE_BUILD_TYPE" >/dev/null
+CMAKE_ARGS=(-DCMAKE_BUILD_TYPE="$CMAKE_BUILD_TYPE")
+if [[ "$(uname -m)" == "aarch64" ]]; then
+  RKNN_ROOT="${RKNN_ROOT:-$PWD/third_party/rknn_runtime}"
+  CMAKE_ARGS+=(
+    -DDOUBLE_OK_ENABLE_RKNN=ON
+    -DRKNN_ROOT="$RKNN_ROOT"
+  )
+fi
+cmake -S . -B "$BUILD_DIR" "${CMAKE_ARGS[@]}" >/dev/null
 cmake --build "$BUILD_DIR" --target double-ok-demo -j "$JOBS" >/dev/null
 
 clean_ld_library_path() {
@@ -92,14 +104,26 @@ clean_qt_plugin_path() {
   printf '%s' "$cleaned"
 }
 
-SYSTEM_QT_PLUGIN_PATH="${SYSTEM_QT_PLUGIN_PATH:-/usr/lib/x86_64-linux-gnu/qt5/plugins}"
+if [[ -z "${SYSTEM_QT_PLUGIN_PATH:-}" ]]; then
+  if command -v qmake >/dev/null 2>&1; then
+    SYSTEM_QT_PLUGIN_PATH="$(qmake -query QT_INSTALL_PLUGINS)"
+  elif [[ "$(uname -m)" == "aarch64" ]]; then
+    SYSTEM_QT_PLUGIN_PATH="/usr/lib/aarch64-linux-gnu/qt5/plugins"
+  else
+    SYSTEM_QT_PLUGIN_PATH="/usr/lib/x86_64-linux-gnu/qt5/plugins"
+  fi
+fi
 SYSTEM_QT_PLATFORM_PLUGIN_PATH="${SYSTEM_QT_PLATFORM_PLUGIN_PATH:-$SYSTEM_QT_PLUGIN_PATH/platforms}"
 
 QT_PLUGIN_PATH="$(clean_qt_plugin_path "${QT_PLUGIN_PATH:-}")"
 QT_PLUGIN_PATH="${QT_PLUGIN_PATH:+$QT_PLUGIN_PATH:}$SYSTEM_QT_PLUGIN_PATH"
 
 run_double_ok_demo() {
-  LD_LIBRARY_PATH="$(clean_ld_library_path)" \
+  local runtime_library_path="$(clean_ld_library_path)"
+  if [[ "$(uname -m)" == "aarch64" ]]; then
+    runtime_library_path="$PWD/third_party/rknn_runtime/aarch64${runtime_library_path:+:$runtime_library_path}"
+  fi
+  LD_LIBRARY_PATH="$runtime_library_path" \
   QT_PLUGIN_PATH="$QT_PLUGIN_PATH" \
   QT_QPA_PLATFORM_PLUGIN_PATH="$SYSTEM_QT_PLATFORM_PLUGIN_PATH" \
   "$BUILD_DIR/double-ok-demo" "$@"
@@ -111,20 +135,13 @@ if [[ "$LIST_CAMERAS" -eq 1 ]]; then
 fi
 
 MODEL_ARGS=()
-if [[ -f models/ok_hand_numpy_logreg.txt ]]; then
-  MODEL_ARGS+=(--model models/ok_hand_numpy_logreg.txt)
-else
-  echo "models/ok_hand_numpy_logreg.txt not found; using geometry rules." >&2
+if [[ "$HAS_ATTRIBUTE_MODEL" -eq 0 && -n "${DOUBLE_OK_HAND_ATTRIBUTE_MODEL:-}" ]]; then
+  MODEL_ARGS+=(--model "$DOUBLE_OK_HAND_ATTRIBUTE_MODEL")
 fi
 
 BACKEND_ARGS=()
 if [[ "$HAS_LANDMARK_BACKEND" -eq 0 ]]; then
-  if [[ -x .venv/bin/python && -f scripts/mediapipe_landmark_server.py ]]; then
-    BACKEND_ARGS+=(--landmark-backend mediapipe)
-  else
-    echo "MediaPipe sidecar not found; using OpenCV heuristic boxes without 21-point landmarks." >&2
-    BACKEND_ARGS+=(--landmark-backend opencv-heuristic)
-  fi
+  BACKEND_ARGS+=(--landmark-backend yolov8-rknn)
 fi
 
 demo_args_for_camera() {

@@ -6,8 +6,9 @@
 
 ```text
 Camera
--> Landmark Provider
--> OK Recognition
+-> YOLOv8-Pose Landmark Provider
+-> Hand Attribute Classification
+-> Double-OK Recognition
 -> Capture Gate
 -> Capture / Output
 -> UI / App
@@ -16,11 +17,12 @@ Camera
 含义：
 
 1. 相机提供 BGR 帧。
-2. landmark provider 为每只手输出 0-20 共 21 个关键点。
-3. recognizer 判断单手 OK，并用时间窗口判断稳定双手 OK。
-4. capture gate 判断眼镜姿态、完整入框、中心区域、双手分离和手势条件。
-5. gate ready 后才允许保存原始帧和 metadata。
-6. GUI 和 CLI 只展示结果、提示用户或执行保存，不重新定义业务规则。
+2. YOLOv8 provider 为每只手输出框、0-20 共 21 个二维关键点及 visibility。
+3. 属性分类器基于 21 组 x/y/visibility 输出可信 Left/Right 和 OK score。
+4. recognizer 只在恰好一左一右且两手均 OK 时产生即时双手 OK，并用时间窗口稳定。
+5. capture gate 判断眼镜姿态、完整入框、中心区域、双手分离和手势条件。
+6. gate ready 后才允许保存原始帧和 metadata。
+7. GUI 和 CLI 只展示结果、提示用户或执行保存，不重新定义业务规则。
 
 ## 分层边界
 
@@ -72,8 +74,15 @@ device:
 inference:
   include/double_ok_gesture/landmark_provider.hpp
   include/double_ok_gesture/hand_detector.hpp
+  include/double_ok_gesture/yolov8_pose_postprocess.hpp
+  include/double_ok_gesture/hand_attribute_classifier.hpp
+  include/double_ok_gesture/model_contract.hpp
   src/landmark_provider.cpp
   src/hand_detector.cpp
+  src/rknn_yolov8_pose_provider.cpp
+  src/yolov8_pose_postprocess.cpp
+  src/hand_attribute_classifier.cpp
+  src/model_contract.cpp
   include/double_ok_gesture/runtime_pipeline.hpp
   src/runtime_pipeline.cpp
 
@@ -111,14 +120,16 @@ report:
 ## 后端口径
 
 ```text
-rknn              生产目标后端，面向 RV1126/RKNPU，等待 SDK 和模型接入
-mediapipe         桌面对齐后端，C++ provider 调用 Python sidecar 输出真实 21 点
+yolov8-rknn       生产目标后端，面向 RK3588/RKNN；rknn 是兼容别名
+mediapipe         显式桌面调试后端，不是生产 fallback
 landmarks-json    外部 21 点 JSON 输入，用于验证显示链路和后端契约
 opencv-heuristic  本机调试候选检测，只用于试看 GUI 和相机链路
 none              关闭检测
 ```
 
-真实产品目标是 MediaPipe 等价的 21 点 hand-landmark 输入。任何调试后端都必须在 GUI、日志和文档中明确标注，不得当成生产结果。
+真实产品目标是 YOLOv8-Pose 的框、21 点二维坐标和 visibility，再接手属性双输出模型。
+任何调试后端都必须在 GUI、日志和文档中明确标注，不得当成生产结果，也不得在生产
+初始化失败时自动启用。
 
 ## 双 GUI 边界
 
@@ -140,8 +151,8 @@ C++ 主线不得直接加载 pickle/joblib。
 2. 从 `apps/demo.cpp` 抽出 capture writer、runtime bundle、单帧 pipeline、CLI/headless 和 Qt dashboard。
 3. 增加 `HandLandmarkProvider` 抽象，统一 `rknn / mediapipe / landmarks-json / opencv-heuristic / none`。
 4. 拆分测试：features、recognizer、gate、config、provider、training、runtime、report、demo app。
-5. 继续拆分 CMake target，便于 RV1126 裁剪和 SDK 适配。
-6. 接入 RKNN 后端和板端验收闭环。
+5. 保持 0612 GUI/CLI 边界，接入 RK3588 YOLOv8 RKNN 和属性分类器。
+6. 模型二及目标域数据齐备后完成 RK3588 板端精度、性能和长稳验收，再继续规整 target。
 
 ## 验收矩阵
 
@@ -151,12 +162,10 @@ cmake --build build --target double-ok-demo double-ok-headless double-ok-gui dou
 ctest --test-dir build --output-on-failure
 scripts/gui_report.sh
 scripts/check_camera.sh
-scripts/run_demo.sh --headless --max-frames 1 --landmark-backend mediapipe
-scripts/run_demo.sh --headless --max-frames 1 --landmark-backend opencv-heuristic
-scripts/run_demo.sh --headless --max-frames 1 --landmark-backend none
+scripts/run_demo.sh --headless --max-frames 1 --landmark-backend landmarks-json --landmarks-json configs/debug_landmarks.json
 cmake -S . -B build-noqt -DCMAKE_BUILD_TYPE=Release -DDOUBLE_OK_BUILD_QT_DEMO=OFF -DDOUBLE_OK_BUILD_CAPTURE_TOOL=OFF
 cmake --build build-noqt --target double-ok-headless double-ok-camera-check double_ok_gesture_tests -j 2
 git diff --check
 ```
 
-RV1126 相关构建和打包属于条件验收，不放入普通日常验收。
+RK3588 交叉编译、Runtime query、真板摄像头和性能测试属于条件验收，不放入普通主机验收。

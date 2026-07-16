@@ -42,12 +42,24 @@ QString camera_label(const CameraStream& camera) {
 }
 
 std::string model_label_for(const QtDashboardOptions& options) {
+    if (options.landmark_backend == LandmarkBackend::Onnx) {
+        return options.pose_model_path
+                   ? "YOLOv8-Pose / ONNX / " +
+                         options.pose_model_path->filename().string()
+                   : "YOLOv8-Pose / ONNX";
+    }
     if (options.model_path) {
+        if (options.landmark_backend == LandmarkBackend::Rknn) {
+            return "YOLOv8-Pose + " +
+                   options.model_path->filename().string();
+        }
         return options.model_path->filename().string();
     }
     switch (options.landmark_backend) {
+        case LandmarkBackend::Onnx:
+            return "YOLOv8-Pose / ONNX";
         case LandmarkBackend::Rknn:
-            return "RKNN 手部关键点";
+            return "YOLOv8-Pose / RKNN";
         case LandmarkBackend::OpenCVDebug:
             return "OpenCV 调试框";
         case LandmarkBackend::None:
@@ -55,7 +67,7 @@ std::string model_label_for(const QtDashboardOptions& options) {
         case LandmarkBackend::MediaPipe:
             return "MediaPipe 21 点";
         case LandmarkBackend::LandmarksJson:
-            return "Landmarks JSON 21 点";
+            return "测试后端 / 非 YOLOv8 推理";
     }
     return "几何规则";
 }
@@ -182,7 +194,8 @@ struct QtDashboard::Impl {
                 window.setWindowTitle(QStringLiteral("双手 OK 采集门控 · 已采集 %1").arg(QString::fromStdString(saved->filename().string())));
             }
         }
-        const auto snapshot = runtime.metrics.update(frame_result.started);
+        auto snapshot = runtime.metrics.update(frame_result.started);
+        snapshot.inference_ms = frame_result.inference_ms;
         ++frames;
 
         cv::Mat display = frame->clone();

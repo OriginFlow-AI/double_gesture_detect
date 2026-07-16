@@ -14,6 +14,8 @@ struct DemoArgs {
     CameraConfig camera;
     std::filesystem::path config = "configs/default.json";
     std::optional<std::filesystem::path> model;
+    std::optional<std::filesystem::path> pose_model;
+    std::optional<std::filesystem::path> pose_manifest;
     std::optional<double> threshold;
     bool capture_gate = false;
     bool require_glasses_pose = false;

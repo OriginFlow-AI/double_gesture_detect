@@ -19,6 +19,7 @@ double_ok_gesture::QtDashboardOptions dashboard_options_from_demo_args(const dou
     options.glasses_pose = args.glasses_pose;
     options.landmark_backend = args.landmark_backend;
     options.model_path = args.model;
+    options.pose_model_path = args.pose_model;
     return options;
 }
 

@@ -72,7 +72,7 @@ DetectedHand parse_hand(const Json& value, std::size_t index) {
     if (value.is_array()) {
         return {
             parse_landmarks(value),
-            index == 0 ? "Left" : (index == 1 ? "Right" : "Unknown"),
+            "Unknown",
             std::nullopt,
             false,
         };
@@ -92,9 +92,10 @@ DetectedHand parse_hand(const Json& value, std::size_t index) {
     if (!score) {
         score = value.get("score");
     }
+    (void)index;
     return {
         parse_landmarks(*landmarks),
-        handedness ? handedness->as_string() : (index == 0 ? "Left" : (index == 1 ? "Right" : "Unknown")),
+        handedness ? handedness->as_string() : "Unknown",
         score ? std::optional<double>(score->as_number()) : std::nullopt,
         false,
     };

@@ -25,6 +25,10 @@ DemoArgs parse_demo_args(int argc, char** argv) {
             args.config = next();
         } else if (key == "--model") {
             args.model = next();
+        } else if (key == "--pose-model") {
+            args.pose_model = next();
+        } else if (key == "--pose-manifest") {
+            args.pose_manifest = next();
         } else if (key == "--threshold") {
             args.threshold = std::stod(next());
         } else if (key == "--width") {
@@ -86,6 +90,8 @@ RuntimeOptions demo_runtime_options(const DemoArgs& args) {
     options.camera = args.camera;
     options.config_path = args.config;
     options.model_path = args.model;
+    options.pose_model_path = args.pose_model;
+    options.pose_manifest_path = args.pose_manifest;
     options.threshold = args.threshold;
     options.require_glasses_pose = args.require_glasses_pose;
     options.capture_output_dir = args.capture_output_dir;
@@ -107,8 +113,14 @@ ProcessFrameOptions demo_process_frame_options(const DemoArgs& args) {
 
 std::optional<std::string> backend_unavailable_message(LandmarkBackend backend) {
     switch (backend) {
+        case LandmarkBackend::Onnx:
+            return std::nullopt;
         case LandmarkBackend::Rknn:
-            return "RKNN hand landmark backend is not available in this build; provide RKNN SDK/model for RV1126.";
+            if (!landmark_backend_available_in_current_build(backend)) {
+                return "YOLOv8 RKNN backend is unavailable in this build; "
+                       "use an RK3588 AArch64 build with RKNN Runtime.";
+            }
+            return std::nullopt;
         case LandmarkBackend::LandmarksJson:
         case LandmarkBackend::MediaPipe:
         case LandmarkBackend::OpenCVDebug:
@@ -144,7 +156,8 @@ int run_demo_headless(const DemoArgs& args, std::ostream& out, std::ostream& err
                 out << "capture_saved=" << saved->string() << '\n';
             }
         }
-        const auto snapshot = runtime.metrics.update(frame_result.started);
+        auto snapshot = runtime.metrics.update(frame_result.started);
+        snapshot.inference_ms = frame_result.inference_ms;
         ++frames;
 
         const double now = monotonic_seconds();
@@ -154,7 +167,9 @@ int run_demo_headless(const DemoArgs& args, std::ostream& out, std::ostream& err
             if (decision) {
                 out << " gate_ready=" << decision->ready << " reason=" << gate_reason_value(decision->reason);
             }
-            out << " fps=" << snapshot.fps << " processing_ms=" << snapshot.processing_ms << '\n';
+            out << " fps=" << snapshot.fps
+                << " inference_ms=" << snapshot.inference_ms
+                << " processing_ms=" << snapshot.processing_ms << '\n';
             last_status = now;
         }
         if (args.max_frames > 0 && frames >= args.max_frames) {

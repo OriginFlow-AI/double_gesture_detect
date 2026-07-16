@@ -10,6 +10,7 @@ struct RuntimeSnapshot {
     double fps = 0.0;
     double processing_ms = 0.0;
     std::size_t frame_count = 0;
+    double inference_ms = 0.0;
 };
 
 class RuntimeMetrics {

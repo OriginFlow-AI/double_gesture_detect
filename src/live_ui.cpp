@@ -305,6 +305,24 @@ void corner_box(cv::Mat& image, const cv::Rect& rect, cv::Scalar color, int thic
 }
 
 cv::Rect hand_box(const HandPrediction& hand, const cv::Size& size) {
+    if (hand.box) {
+        const auto& box = *hand.box;
+        const int max_x = std::max(0, size.width - 1);
+        const int max_y = std::max(0, size.height - 1);
+        const int x_min = std::clamp(
+            static_cast<int>(std::lround(box.xmin * size.width)), 0, max_x);
+        const int y_min = std::clamp(
+            static_cast<int>(std::lround(box.ymin * size.height)), 0, max_y);
+        const int x_max = std::clamp(
+            static_cast<int>(std::lround(box.xmax * size.width)), x_min, max_x);
+        const int y_max = std::clamp(
+            static_cast<int>(std::lround(box.ymax * size.height)), y_min, max_y);
+        return cv::Rect(
+                   cv::Point(x_min, y_min),
+                   cv::Point(std::min(size.width, x_max + 1),
+                             std::min(size.height, y_max + 1))) &
+               cv::Rect(0, 0, size.width, size.height);
+    }
     int x_min = size.width;
     int y_min = size.height;
     int x_max = 0;
@@ -495,6 +513,15 @@ std::string handedness_label(const std::string& handedness) {
     return "未知手";
 }
 
+double displayed_handedness_confidence(const HandPrediction& hand) {
+    // The 0612 debug/test providers do not provide a separate handedness
+    // confidence. Preserve their historical display while production model
+    // output uses the dedicated attribute-model confidence.
+    return hand.handedness_confidence > 0.0
+               ? hand.handedness_confidence
+               : hand.ok_score;
+}
+
 void draw_section_title(cv::Mat& image, const std::string& title, cv::Point origin) {
     cv::rectangle(image, {origin.x, origin.y - 15}, {origin.x + 3, origin.y + 3}, kAccent, -1);
     put_text(image, title, {origin.x + 12, origin.y}, 0.38, kMuted, 1);
@@ -533,7 +560,9 @@ void draw_hand_tracking(cv::Mat& frame_bgr, const DoubleOKResult& result) {
         draw_landmark_skeleton(frame_bgr, points, color, false);
         const cv::Rect box = hand_box(hand, size);
         corner_box(frame_bgr, box, color, 3);
-        const std::string label = handedness_label(hand.handedness) + "  " + fixed(hand.ok_score * 100.0, 1) + "%";
+        const std::string label =
+            handedness_label(hand.handedness) + "  " +
+            fixed(displayed_handedness_confidence(hand) * 100.0, 1) + "%";
         const int label_width = std::max(150, text_size(label, 0.48).width + 24);
         const int label_y = std::max(8, box.y - 34);
         rounded_rect(frame_bgr, {box.x, label_y, label_width, 28}, cv::Scalar(32, 32, 32), 6);
@@ -588,9 +617,10 @@ cv::Mat render_dashboard(
     const cv::Rect status_rect(width - margin - 198, std::max(12, (header_h - 40) / 2), 198, 40);
     const int chip_w = 128;
     const int chip_gap = 10;
-    const std::array<std::tuple<std::string, std::string, bool>, 3> chips = {
+    const std::array<std::tuple<std::string, std::string, bool>, 4> chips = {
         std::tuple{ui_text("帧率", "FPS"), fixed(snapshot.fps, 1), snapshot.fps >= target_fps || snapshot.frame_count < 10 || target_fps <= 0.0},
-        std::tuple{ui_text("延迟", "LATENCY"), fixed(snapshot.processing_ms, 1) + " ms", snapshot.processing_ms <= 100.0},
+        std::tuple{ui_text("总耗时", "TOTAL"), fixed(snapshot.processing_ms, 1) + " ms", snapshot.processing_ms <= 100.0},
+        std::tuple{ui_text("推理", "INFER"), fixed(snapshot.inference_ms, 1) + " ms", snapshot.inference_ms <= 100.0},
         std::tuple{ui_text("相机", "CAMERA"), short_camera_label(camera_label), true},
     };
     const int title_x = margin + 22;
@@ -748,7 +778,13 @@ cv::Mat render_dashboard(
             const auto& hand = result.hands[i];
             const cv::Scalar color = ok_color(hand.is_ok);
             put_text(canvas, handedness_label(hand.handedness), {card.x + 14, card.y + 24}, 0.43, kText, 1);
-            right_text(canvas, fixed(hand.ok_score * 100.0, 1) + "%", {card.x + card.width - 14, card.y + 24}, 0.45, color, 1);
+            right_text(
+                canvas,
+                fixed(displayed_handedness_confidence(hand) * 100.0, 1) + "%",
+                {card.x + card.width - 14, card.y + 24},
+                0.45,
+                color,
+                1);
             progress_bar(
                 canvas,
                 {card.x + 14, card.y + (compact_side ? 34 : 36), card.width - 28, compact_side ? 8 : 10},
@@ -757,7 +793,9 @@ cv::Mat render_dashboard(
                 kBackground);
             put_text(
                 canvas,
-                hand.is_ok ? ui_text("OK 手势", "OK GESTURE") : ui_text("非 OK", "NOT OK"),
+                (hand.is_ok ? ui_text("OK 手势 ", "OK GESTURE ")
+                            : ui_text("非 OK ", "NOT OK ")) +
+                    fixed(hand.ok_score * 100.0, 1) + "%",
                 {card.x + 14, card.y + (compact_side ? 54 : 65)},
                 0.32,
                 color,

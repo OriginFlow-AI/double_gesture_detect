@@ -15,6 +15,24 @@ struct RecognizerConfig {
     int stable_min_positive = 3;
     double min_detection_confidence = 0.55;
     double min_tracking_confidence = 0.55;
+    double handedness_confidence_threshold = 0.65;
+    bool input_mirrored = false;
+};
+
+struct YoloV8PoseConfig {
+    std::filesystem::path model_path =
+        "models/rk3588/hand_pose_640_fp.rknn";
+    std::filesystem::path manifest_path =
+        "models/rk3588/hand_pose_640_fp.rknn.manifest.json";
+    int input_size = 640;
+    double min_detection_confidence = 0.55;
+    double min_keypoint_visibility = 0.55;
+    double nms_iou_threshold = 0.45;
+    int min_reliable_keypoints = 8;
+};
+
+struct HandAttributeConfig {
+    std::filesystem::path model_path;
 };
 
 struct CameraConfig {
@@ -37,6 +55,8 @@ struct DataCaptureConfig {
 
 struct RuntimeConfig {
     RecognizerConfig recognizer;
+    YoloV8PoseConfig yolov8_pose;
+    HandAttributeConfig hand_attribute;
     CaptureGateConfig capture_gate;
     DataCaptureConfig data_capture;
 };

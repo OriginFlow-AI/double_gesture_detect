@@ -6,28 +6,70 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-find_package(OpenCV REQUIRED COMPONENTS core imgproc imgcodecs videoio highgui)
+find_package(OpenCV REQUIRED COMPONENTS core dnn imgproc imgcodecs videoio highgui)
 
 option(DOUBLE_OK_BUILD_QT_DEMO "Build the Qt live dashboard demo" ON)
 option(DOUBLE_OK_BUILD_CAPTURE_TOOL "Build the desktop OpenCV HighGUI capture tool" ON)
+option(DOUBLE_OK_ENABLE_RKNN "Build the RK3588 YOLOv8-Pose RKNN backend" OFF)
+set(RKNN_ROOT "" CACHE PATH
+    "RKNN Runtime root containing include/rknn_api.h and aarch64/librknnrt.so")
 
-add_library(double_ok_gesture_core
+set(DOUBLE_OK_CORE_SOURCES
     src/camera.cpp
     src/capture_writer.cpp
     src/capture_gate.cpp
     src/config.cpp
     src/features.cpp
+    src/hand_attribute_classifier.cpp
     src/hand_detector.cpp
     src/json.cpp
     src/landmark_provider.cpp
     src/live_ui.cpp
+    src/model_contract.cpp
     src/model_io.cpp
+    src/onnx_yolov8_pose_provider.cpp
     src/recognizer.cpp
     src/report.cpp
     src/runtime.cpp
     src/runtime_pipeline.cpp
     src/training.cpp
+    src/yolov8_pose_postprocess.cpp
 )
+
+if(DOUBLE_OK_ENABLE_RKNN)
+    if(RKNN_ROOT)
+        find_path(RKNN_INCLUDE_DIR
+            NAMES rknn_api.h
+            HINTS "${RKNN_ROOT}"
+            PATH_SUFFIXES include
+            NO_DEFAULT_PATH
+            NO_CMAKE_FIND_ROOT_PATH)
+        find_library(RKNN_RUNTIME_LIBRARY
+            NAMES rknnrt
+            HINTS "${RKNN_ROOT}"
+            PATH_SUFFIXES aarch64 lib lib64
+            NO_DEFAULT_PATH
+            NO_CMAKE_FIND_ROOT_PATH)
+    else()
+        find_path(RKNN_INCLUDE_DIR NAMES rknn_api.h PATH_SUFFIXES include)
+        find_library(RKNN_RUNTIME_LIBRARY NAMES rknnrt)
+    endif()
+    if(NOT RKNN_INCLUDE_DIR OR NOT EXISTS "${RKNN_INCLUDE_DIR}/rknn_api.h")
+        message(FATAL_ERROR
+            "DOUBLE_OK_ENABLE_RKNN=ON requires rknn_api.h; set RKNN_ROOT or RKNN_INCLUDE_DIR")
+    endif()
+    if(NOT RKNN_RUNTIME_LIBRARY OR NOT EXISTS "${RKNN_RUNTIME_LIBRARY}")
+        message(FATAL_ERROR
+            "DOUBLE_OK_ENABLE_RKNN=ON requires librknnrt.so; set RKNN_ROOT or RKNN_RUNTIME_LIBRARY")
+    endif()
+    add_library(RKNN::Runtime SHARED IMPORTED GLOBAL)
+    set_target_properties(RKNN::Runtime PROPERTIES
+        IMPORTED_LOCATION "${RKNN_RUNTIME_LIBRARY}"
+        INTERFACE_INCLUDE_DIRECTORIES "${RKNN_INCLUDE_DIR}")
+    list(APPEND DOUBLE_OK_CORE_SOURCES src/rknn_yolov8_pose_provider.cpp)
+endif()
+
+add_library(double_ok_gesture_core ${DOUBLE_OK_CORE_SOURCES})
 
 target_include_directories(double_ok_gesture_core
     PUBLIC
@@ -38,10 +80,16 @@ target_include_directories(double_ok_gesture_core
 target_link_libraries(double_ok_gesture_core
     PUBLIC
         opencv_core
+        opencv_dnn
         opencv_imgproc
         opencv_imgcodecs
         opencv_videoio
 )
+target_compile_definitions(double_ok_gesture_core
+    PUBLIC DOUBLE_OK_ENABLE_RKNN=$<BOOL:${DOUBLE_OK_ENABLE_RKNN}>)
+if(DOUBLE_OK_ENABLE_RKNN)
+    target_link_libraries(double_ok_gesture_core PRIVATE RKNN::Runtime)
+endif()
 
 find_library(OPENCV_FREETYPE_LIBRARY NAMES opencv_freetype HINTS ${OpenCV_LIBRARY_DIRS})
 if(OPENCV_FREETYPE_LIBRARY)
@@ -96,3 +144,28 @@ add_executable(double_ok_gesture_tests tests/cpp/test_core.cpp)
 target_link_libraries(double_ok_gesture_tests PRIVATE double_ok_gesture_core double_ok_gesture_demo_app)
 target_compile_options(double_ok_gesture_tests PRIVATE -Wall -Wextra -Wpedantic)
 add_test(NAME double_ok_gesture_tests COMMAND double_ok_gesture_tests)
+
+add_executable(
+    double_ok_yolov8_pose_tests
+    tests/cpp/test_yolov8_pose_postprocess.cpp)
+target_link_libraries(
+    double_ok_yolov8_pose_tests PRIVATE double_ok_gesture_core)
+target_compile_options(
+    double_ok_yolov8_pose_tests PRIVATE -Wall -Wextra -Wpedantic)
+add_test(
+    NAME double_ok_yolov8_pose_tests
+    COMMAND double_ok_yolov8_pose_tests)
+
+add_executable(
+    double_ok_model_replacement_tests
+    tests/cpp/test_model_replacement.cpp)
+target_link_libraries(
+    double_ok_model_replacement_tests PRIVATE double_ok_gesture_core)
+target_compile_definitions(
+    double_ok_model_replacement_tests
+    PRIVATE DOUBLE_OK_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
+target_compile_options(
+    double_ok_model_replacement_tests PRIVATE -Wall -Wextra -Wpedantic)
+add_test(
+    NAME double_ok_model_replacement_tests
+    COMMAND double_ok_model_replacement_tests)

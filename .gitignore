@@ -15,3 +15,5 @@ models/*
 !data/processed/README.md
 !models/.gitkeep
 !models/README.md
+!models/rk3588/
+!models/rk3588/**

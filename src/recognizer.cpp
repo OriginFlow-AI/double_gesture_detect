@@ -77,6 +77,9 @@ HandPrediction OKHandClassifier::predict_with_score(
         ok >= threshold_,
         landmarks,
         landmarks_estimated,
+        std::nullopt,
+        std::nullopt,
+        0.0,
     };
 }
 
@@ -91,8 +94,11 @@ double OKHandClassifier::threshold() const {
 DoubleOKRecognizer::DoubleOKRecognizer(
     OKHandClassifier classifier,
     std::size_t stable_window,
-    std::size_t stable_min_positive)
-    : classifier_(std::move(classifier)), stable_min_positive_(stable_min_positive), history_limit_(stable_window) {
+    std::size_t stable_min_positive,
+    std::optional<HandAttributeClassifier> attribute_classifier)
+    : classifier_(std::move(classifier)), stable_min_positive_(stable_min_positive),
+      history_limit_(stable_window),
+      attribute_classifier_(std::move(attribute_classifier)) {
     if (stable_window < 1) {
         throw std::invalid_argument("stable_window must be at least 1");
     }
@@ -105,7 +111,27 @@ DoubleOKResult DoubleOKRecognizer::process_hands(const std::vector<DetectedHand>
     DoubleOKResult result;
     result.hands.reserve(hands.size());
     for (const DetectedHand& hand : hands) {
-        if (hand.ok_score) {
+        if (attribute_classifier_) {
+            if (!hand.landmark_confidences) {
+                throw std::runtime_error(
+                    "hand attribute classification requires 21 keypoint "
+                    "visibility values");
+            }
+            const HandAttributePrediction attributes =
+                attribute_classifier_->predict(
+                    hand.landmarks, *hand.landmark_confidences);
+            HandPrediction prediction = classifier_.predict_with_score(
+                hand.landmarks,
+                attributes.handedness,
+                attributes.ok_score,
+                hand.landmarks_estimated);
+            prediction.is_ok = attributes.is_ok;
+            prediction.handedness_confidence =
+                attributes.handedness_confidence;
+            prediction.landmark_confidences = hand.landmark_confidences;
+            prediction.box = hand.box;
+            result.hands.push_back(std::move(prediction));
+        } else if (hand.ok_score) {
             result.hands.push_back(
                 classifier_.predict_with_score(
                     hand.landmarks,
@@ -115,13 +141,31 @@ DoubleOKResult DoubleOKRecognizer::process_hands(const std::vector<DetectedHand>
         } else {
             HandPrediction prediction = classifier_.predict(hand.landmarks, hand.handedness);
             prediction.landmarks_estimated = hand.landmarks_estimated;
+            prediction.landmark_confidences = hand.landmark_confidences;
+            prediction.box = hand.box;
             result.hands.push_back(prediction);
         }
     }
     result.ok_count = static_cast<int>(std::count_if(result.hands.begin(), result.hands.end(), [](const auto& hand) {
         return hand.is_ok;
     }));
-    result.double_ok = result.ok_count >= 2;
+    if (attribute_classifier_) {
+        const bool left_ok = std::any_of(
+            result.hands.begin(), result.hands.end(), [](const auto& hand) {
+                return hand.handedness == "Left" && hand.is_ok;
+            });
+        const bool right_ok = std::any_of(
+            result.hands.begin(), result.hands.end(), [](const auto& hand) {
+                return hand.handedness == "Right" && hand.is_ok;
+            });
+        result.double_ok =
+            result.hands.size() == 2 && result.ok_count == 2 && left_ok && right_ok;
+    } else {
+        // Preserve the 0612 JSON/MediaPipe/debug behavior. The production
+        // YOLO path always installs attribute_classifier_ and therefore can
+        // never equate "two detections" with a valid Left+Right Double-OK.
+        result.double_ok = result.ok_count >= 2;
+    }
 
     history_.push_back(result.double_ok);
     while (history_.size() > history_limit_) {

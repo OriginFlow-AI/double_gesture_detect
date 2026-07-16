@@ -26,6 +26,7 @@ ctest --test-dir build --output-on-failure
 - Keep core gate and feature logic testable without a camera.
 - Use C++ text model artifacts under `models/*.txt` for runtime/training/evaluation.
 - Keep static GUI reports aligned with the `dev_` content contract and historical `.pkl` display path when requested.
-- The live demo target is the old Python MediaPipe Hands behavior deployed as a C++/RV1126 RKNN pipeline: real 21-point
-  hand landmarks, skeleton overlay, OK scoring, centered-field gate, and capture. OpenCV heuristic detection is only an
-  explicit debug fallback and must be labeled as non-parity.
+- The production live path is C++ on RK3588: YOLOv8-Pose RKNN outputs hand boxes and 21 x/y/visibility points, followed
+  by a separately trained Left/Right + OK attribute model. Missing assets or backend mismatch must fail initialization.
+- MediaPipe, landmark JSON and OpenCV heuristic are explicit test/debug backends only. They must be labeled as non-production
+  and must never be selected as an automatic fallback.

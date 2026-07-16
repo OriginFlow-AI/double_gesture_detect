@@ -10,6 +10,10 @@
 #include "double_ok_gesture/hand_detector.hpp"
 #include "double_ok_gesture/recognizer.hpp"
 
+#ifndef DOUBLE_OK_ENABLE_RKNN
+#define DOUBLE_OK_ENABLE_RKNN 0
+#endif
+
 namespace double_ok_gesture {
 
 struct LandmarkProviderInfo {
@@ -35,6 +39,66 @@ public:
 private:
     LandmarkProviderInfo info_;
 };
+
+struct YoloV8OnnxPipelineConfig {
+    std::filesystem::path model;
+    int input_size = 640;
+    int max_num_hands = 2;
+    double min_detection_confidence = 0.55;
+    double min_keypoint_visibility = 0.55;
+    double nms_iou_threshold = 0.45;
+    std::size_t min_reliable_keypoints = 8;
+};
+
+class YoloV8OnnxHandLandmarkProvider : public HandLandmarkProvider {
+public:
+    explicit YoloV8OnnxHandLandmarkProvider(
+        YoloV8OnnxPipelineConfig config);
+    ~YoloV8OnnxHandLandmarkProvider() override;
+
+    YoloV8OnnxHandLandmarkProvider(
+        const YoloV8OnnxHandLandmarkProvider&) = delete;
+    YoloV8OnnxHandLandmarkProvider& operator=(
+        const YoloV8OnnxHandLandmarkProvider&) = delete;
+
+    LandmarkProviderInfo info() const override;
+    std::vector<DetectedHand> detect(const cv::Mat& frame_bgr) override;
+
+private:
+    struct Impl;
+    std::unique_ptr<Impl> impl_;
+};
+
+#if DOUBLE_OK_ENABLE_RKNN
+struct YoloV8RknnPipelineConfig {
+    std::filesystem::path model;
+    int input_size = 640;
+    int max_num_hands = 2;
+    double min_detection_confidence = 0.55;
+    double min_keypoint_visibility = 0.55;
+    double nms_iou_threshold = 0.45;
+    std::size_t min_reliable_keypoints = 8;
+};
+
+class YoloV8RknnHandLandmarkProvider : public HandLandmarkProvider {
+public:
+    explicit YoloV8RknnHandLandmarkProvider(
+        YoloV8RknnPipelineConfig config);
+    ~YoloV8RknnHandLandmarkProvider() override;
+
+    YoloV8RknnHandLandmarkProvider(
+        const YoloV8RknnHandLandmarkProvider&) = delete;
+    YoloV8RknnHandLandmarkProvider& operator=(
+        const YoloV8RknnHandLandmarkProvider&) = delete;
+
+    LandmarkProviderInfo info() const override;
+    std::vector<DetectedHand> detect(const cv::Mat& frame_bgr) override;
+
+private:
+    struct Impl;
+    std::unique_ptr<Impl> impl_;
+};
+#endif
 
 class OpenCVDebugLandmarkProvider : public HandLandmarkProvider {
 public:

@@ -295,6 +295,7 @@ void test_runtime_metrics() {
 }
 
 void test_landmark_backend_parser() {
+    EXPECT_EQ(double_ok_gesture::landmark_backend_from_string("yolov8-onnx"), double_ok_gesture::LandmarkBackend::Onnx);
     EXPECT_EQ(double_ok_gesture::landmark_backend_from_string("rknn"), double_ok_gesture::LandmarkBackend::Rknn);
     EXPECT_EQ(double_ok_gesture::landmark_backend_from_string("mediapipe"), double_ok_gesture::LandmarkBackend::MediaPipe);
     EXPECT_EQ(
@@ -307,6 +308,10 @@ void test_landmark_backend_parser() {
     EXPECT_TRUE(double_ok_gesture::landmark_backend_available_in_current_build(double_ok_gesture::LandmarkBackend::LandmarksJson));
     EXPECT_TRUE(double_ok_gesture::landmark_backend_available_in_current_build(double_ok_gesture::LandmarkBackend::MediaPipe));
     EXPECT_TRUE(double_ok_gesture::landmark_backend_available_in_current_build(double_ok_gesture::LandmarkBackend::OpenCVDebug));
+    EXPECT_TRUE(double_ok_gesture::landmark_backend_available_in_current_build(double_ok_gesture::LandmarkBackend::Onnx));
+    EXPECT_EQ(
+        std::string(double_ok_gesture::landmark_backend_value(double_ok_gesture::LandmarkBackend::Onnx)),
+        std::string("yolov8-onnx"));
     EXPECT_FALSE(double_ok_gesture::landmark_backend_available_in_current_build(double_ok_gesture::LandmarkBackend::Rknn));
 
     bool threw = false;
@@ -327,6 +332,8 @@ void test_demo_args_parse_and_map_options() {
         "configs/test.json",
         "--model",
         "models/test.txt",
+        "--pose-model",
+        "models/hand_pose.onnx",
         "--threshold",
         "0.75",
         "--width",
@@ -377,6 +384,8 @@ void test_demo_args_parse_and_map_options() {
     EXPECT_EQ(args.config.string(), std::string("configs/test.json"));
     EXPECT_TRUE(args.model.has_value());
     EXPECT_EQ(args.model->string(), std::string("models/test.txt"));
+    EXPECT_TRUE(args.pose_model.has_value());
+    EXPECT_EQ(args.pose_model->string(), std::string("models/hand_pose.onnx"));
     EXPECT_TRUE(args.threshold.has_value());
     EXPECT_NEAR(*args.threshold, 0.75, 1e-12);
     EXPECT_TRUE(args.capture_gate);
@@ -401,6 +410,7 @@ void test_demo_args_parse_and_map_options() {
     EXPECT_EQ(runtime_options.camera.source, args.camera.source);
     EXPECT_EQ(runtime_options.config_path.string(), args.config.string());
     EXPECT_EQ(runtime_options.model_path->string(), args.model->string());
+    EXPECT_EQ(runtime_options.pose_model_path->string(), args.pose_model->string());
     EXPECT_TRUE(runtime_options.threshold.has_value());
     EXPECT_TRUE(runtime_options.require_glasses_pose);
     EXPECT_EQ(runtime_options.capture_output_dir->string(), args.capture_output_dir->string());
@@ -430,6 +440,19 @@ void test_demo_args_reject_missing_value() {
         threw = true;
     }
     EXPECT_TRUE(threw);
+}
+
+void test_onnx_backend_requires_explicit_pose_model_without_fallback() {
+    double_ok_gesture::RuntimeOptions options;
+    options.landmark_backend = double_ok_gesture::LandmarkBackend::Onnx;
+    options.config_path = std::filesystem::path("..") / "configs/default.json";
+    std::string message;
+    try {
+        (void)double_ok_gesture::make_runtime(options);
+    } catch (const std::exception& error) {
+        message = error.what();
+    }
+    EXPECT_TRUE(message.find("requires --pose-model") != std::string::npos);
 }
 
 void test_null_landmark_provider_returns_empty() {
@@ -577,6 +600,7 @@ int main() {
         {"demo_args_parse_and_map_options", test_demo_args_parse_and_map_options},
         {"demo_args_list_cameras_stops_parsing", test_demo_args_list_cameras_stops_parsing},
         {"demo_args_reject_missing_value", test_demo_args_reject_missing_value},
+        {"onnx_backend_requires_explicit_pose_model_without_fallback", test_onnx_backend_requires_explicit_pose_model_without_fallback},
         {"null_landmark_provider_returns_empty", test_null_landmark_provider_returns_empty},
         {"json_landmark_provider_reads_real_21_point_hands", test_json_landmark_provider_reads_real_21_point_hands},
         {"capture_writer_skips_when_not_ready", test_capture_writer_skips_when_not_ready},

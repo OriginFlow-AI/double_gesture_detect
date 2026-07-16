@@ -214,7 +214,9 @@ std::vector<DetectedHand> OpenCVHandDetector::detect(const cv::Mat& frame_bgr) c
     std::vector<DetectedHand> hands;
     hands.reserve(candidates.size());
     for (std::size_t i = 0; i < candidates.size(); ++i) {
-        const std::string handedness = i == 0 && candidates.size() > 1 ? "Left" : (i == 1 ? "Right" : "Unknown");
+        // Candidate order is image-space order, not anatomical handedness.
+        // Debug detections must not manufacture Left/Right labels.
+        const std::string handedness = "Unknown";
         hands.push_back({
             approximate_landmarks(candidates[i].box, frame_bgr.size()),
             handedness,
