@@ -28,18 +28,27 @@ mkdir -p \
   "$PACKAGE_ROOT/scripts" \
   "$PACKAGE_ROOT/third_party"
 
+copy_tracked() {
+  local source_path=""
+  while IFS= read -r -d '' source_path; do
+    mkdir -p "$PACKAGE_ROOT/$(dirname "$source_path")"
+    cp -a -- "$source_path" "$PACKAGE_ROOT/$source_path"
+  done < <(git ls-files -z -- "$@")
+}
+
 cp CMakeLists.txt VERSION "$PACKAGE_ROOT/"
 cp DEPLOY_RK3588.md "$PACKAGE_ROOT/README.md"
 cp apps/demo.cpp "$PACKAGE_ROOT/apps/"
 cp configs/default.json "$PACKAGE_ROOT/configs/"
-cp -a include src "$PACKAGE_ROOT/"
-cp -a models/rk3588 "$PACKAGE_ROOT/models/"
-cp -a third_party/rknn "$PACKAGE_ROOT/third_party/"
+copy_tracked include src models/rk3588 third_party/rknn
 cp scripts/run_demo.sh "$PACKAGE_ROOT/scripts/"
 
 tar -C "$STAGING_DIR" -czf "$ARCHIVE_PATH" "$PACKAGE_NAME"
 
-sha256sum "$ARCHIVE_PATH" > "$ARCHIVE_PATH.sha256"
+(
+  cd "$OUTPUT_DIR"
+  sha256sum "$PACKAGE_NAME.tar.gz" > "$PACKAGE_NAME.tar.gz.sha256"
+)
 
 echo "部署包：$ARCHIVE_PATH"
 echo "校验文件：$ARCHIVE_PATH.sha256"
