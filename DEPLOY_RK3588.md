@@ -2,6 +2,26 @@
 
 版本：`0.3.0-rk3588-npu`
 
+## Git 交付记录
+
+- 仓库：`git@github.com:wangjh2024/00_double_gesture_detect.git`
+- HTTPS：`https://github.com/wangjh2024/00_double_gesture_detect.git`
+- 交付分支：`model-replacement-0612`
+- 已发布部署提交：`ea6e499e8088c42ae64a0942642352f80018acec`
+- 提交名称：`版本名称：RK3588 NPU 双手 OK 手势识别部署版`
+
+同事拉取命令：
+
+```bash
+git clone -b model-replacement-0612 --single-branch \
+  git@github.com:wangjh2024/00_double_gesture_detect.git
+cd 00_double_gesture_detect
+git log -1 --oneline
+cat VERSION
+```
+
+没有配置 GitHub SSH 时，将地址替换为上面的 HTTPS 地址。
+
 ## 目标环境
 
 - RK3588 / RK3588S，AArch64 Linux
