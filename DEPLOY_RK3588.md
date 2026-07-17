@@ -43,6 +43,7 @@ tar -xzf double-ok-rk3588-0.3.0-rk3588-npu.tar.gz
 cd double-ok-rk3588-0.3.0-rk3588-npu
 sha256sum -c models/rk3588/SHA256SUMS
 (cd third_party/rknn && sha256sum -c SHA256SUMS)
+scripts/verify_rk3588.sh /dev/video6
 scripts/run_demo.sh
 ```
 
@@ -51,6 +52,10 @@ scripts/run_demo.sh
 ```bash
 scripts/run_demo.sh /dev/video0
 ```
+
+首次上板应先运行 `scripts/verify_rk3588.sh /dev/videoN`。预检会确认系统架构、相机
+权限、模型和 RKNN Runtime 校验和，并以 `DOUBLE_OK_REQUIRE_RKNN=ON` 强制编译 NPU
+版本；任何 CPU 回退或动态库缺失都会直接失败。
 
 脚本自动配置、编译并启动 Qt 界面。日志必须显示：
 

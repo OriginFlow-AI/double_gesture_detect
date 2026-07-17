@@ -61,6 +61,7 @@ export RKNN_SDK_ROOT=/path/to/rknn-toolkit2/rknpu2
 ```bash
 uname -m                    # 应输出 aarch64 或 arm64
 sha256sum -c models/rk3588/SHA256SUMS
+scripts/verify_rk3588.sh    # 强制校验并编译 RKNN NPU 版本
 scripts/run_demo.sh         # 默认相机 /dev/video6
 ```
 

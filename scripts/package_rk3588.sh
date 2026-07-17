@@ -41,7 +41,7 @@ cp DEPLOY_RK3588.md "$PACKAGE_ROOT/README.md"
 cp apps/demo.cpp "$PACKAGE_ROOT/apps/"
 cp configs/default.json "$PACKAGE_ROOT/configs/"
 copy_tracked include src models/rk3588 third_party/rknn
-cp scripts/run_demo.sh "$PACKAGE_ROOT/scripts/"
+cp scripts/run_demo.sh scripts/verify_rk3588.sh "$PACKAGE_ROOT/scripts/"
 
 tar -C "$STAGING_DIR" -czf "$ARCHIVE_PATH" "$PACKAGE_NAME"
 
