@@ -19,26 +19,22 @@ namespace double_ok_gesture {
 
 enum class LandmarkBackend {
     Onnx,
-    Rknn,
-    MediaPipe,
     LandmarksJson,
-    OpenCVDebug,
     None,
 };
 
 struct RuntimeOptions {
     CameraConfig camera;
     std::filesystem::path config_path = "configs/default.json";
-    std::optional<std::filesystem::path> model_path;
-    std::optional<std::filesystem::path> pose_model_path;
-    std::optional<std::filesystem::path> pose_manifest_path;
+    std::optional<std::filesystem::path> palm_model_path;
+    std::optional<std::filesystem::path> hand_model_path;
     std::optional<double> threshold;
     bool require_glasses_pose = false;
     std::optional<std::filesystem::path> capture_output_dir;
     std::optional<double> capture_cooldown_sec;
     bool disable_auto_capture = false;
     std::string log_level = "INFO";
-    LandmarkBackend landmark_backend = LandmarkBackend::Rknn;
+    LandmarkBackend landmark_backend = LandmarkBackend::Onnx;
     std::optional<std::filesystem::path> landmarks_json_path;
 };
 
@@ -49,7 +45,7 @@ struct RuntimeBundle {
     std::unique_ptr<HandLandmarkProvider> landmark_provider;
     CameraStream camera;
     RuntimeMetrics metrics;
-    LandmarkBackend landmark_backend = LandmarkBackend::Rknn;
+    LandmarkBackend landmark_backend = LandmarkBackend::Onnx;
 };
 
 struct ProcessFrameOptions {

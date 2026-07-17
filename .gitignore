@@ -7,13 +7,11 @@ __pycache__/
 build/
 build-*/
 data/raw/*
-data/processed/*
 models/*
 !data/raw/.gitkeep
 !data/raw/README.md
-!data/processed/.gitkeep
-!data/processed/README.md
 !models/.gitkeep
 !models/README.md
-!models/rk3588/
-!models/rk3588/**
+!models/opencv_zoo/
+!models/opencv_zoo/**
+reports/live/

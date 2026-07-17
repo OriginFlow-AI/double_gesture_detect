@@ -24,12 +24,10 @@ DemoArgs parse_demo_args(int argc, char** argv) {
             args.camera.source = next();
         } else if (key == "--config") {
             args.config = next();
-        } else if (key == "--model") {
-            args.model = next();
-        } else if (key == "--pose-model") {
-            args.pose_model = next();
-        } else if (key == "--pose-manifest") {
-            args.pose_manifest = next();
+        } else if (key == "--palm-model") {
+            args.palm_model = next();
+        } else if (key == "--hand-model" || key == "--pose-model") {
+            args.hand_model = next();
         } else if (key == "--threshold") {
             args.threshold = parse_finite_double_argument(next(), key);
         } else if (key == "--width") {
@@ -69,10 +67,6 @@ DemoArgs parse_demo_args(int argc, char** argv) {
             args.disable_auto_capture = true;
         } else if (key == "--log-level") {
             args.log_level = next();
-        } else if (key == "--voice-prompts") {
-            // Kept for CLI compatibility. TTS is intentionally not spawned in the C++ build.
-        } else if (key == "--prompt-interval") {
-            (void)next();
         } else if (key == "--max-frames") {
             args.max_frames = parse_int_argument(next(), key);
         } else if (key == "--landmark-backend") {
@@ -106,9 +100,8 @@ RuntimeOptions demo_runtime_options(const DemoArgs& args) {
     RuntimeOptions options;
     options.camera = args.camera;
     options.config_path = args.config;
-    options.model_path = args.model;
-    options.pose_model_path = args.pose_model;
-    options.pose_manifest_path = args.pose_manifest;
+    options.palm_model_path = args.palm_model;
+    options.hand_model_path = args.hand_model;
     options.threshold = args.threshold;
     options.require_glasses_pose = args.require_glasses_pose;
     options.capture_output_dir = args.capture_output_dir;
@@ -129,36 +122,14 @@ ProcessFrameOptions demo_process_frame_options(const DemoArgs& args) {
     return options;
 }
 
-std::optional<std::string> backend_unavailable_message(LandmarkBackend backend) {
-    switch (backend) {
-        case LandmarkBackend::Onnx:
-            return std::nullopt;
-        case LandmarkBackend::Rknn:
-            if (!landmark_backend_available_in_current_build(backend)) {
-                return "YOLOv8 RKNN backend is unavailable in this build; "
-                       "use an RK3588 AArch64 build with RKNN Runtime.";
-            }
-            return std::nullopt;
-        case LandmarkBackend::LandmarksJson:
-        case LandmarkBackend::MediaPipe:
-        case LandmarkBackend::OpenCVDebug:
-        case LandmarkBackend::None:
-            return std::nullopt;
-    }
-    return std::nullopt;
-}
-
 int write_demo_camera_list(std::ostream& out) {
     out << format_video_devices() << '\n';
     return 0;
 }
 
-int run_demo_headless(const DemoArgs& args, std::ostream& out, std::ostream& err) {
+int run_demo_headless(const DemoArgs& args, std::ostream& out) {
     RuntimeBundle runtime = make_runtime(demo_runtime_options(args));
     CaptureWriter capture_writer(runtime.config.data_capture);
-    if (const auto message = backend_unavailable_message(args.landmark_backend)) {
-        err << *message << '\n';
-    }
     double last_status = 0.0;
     int frames = 0;
     while (true) {
@@ -194,7 +165,7 @@ int run_demo_headless(const DemoArgs& args, std::ostream& out, std::ostream& err
                         << hand.handedness_confidence;
                 }
                 if (hand.box) {
-                    out << " hand" << index << "_pose_score="
+                    out << " hand" << index << "_detection_score="
                         << hand.box->detection_score;
                 }
                 if (hand.landmark_confidences) {

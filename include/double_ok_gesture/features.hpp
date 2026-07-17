@@ -2,7 +2,6 @@
 
 #include <array>
 #include <string>
-#include <vector>
 
 namespace double_ok_gesture {
 
@@ -38,9 +37,9 @@ enum LandmarkIndex {
     PINKY_TIP = 20,
 };
 
-// The fallback scorer needs these points for its origin/scale, pinch and
-// three-open-finger evidence. Pose providers use the same list for a
-// visibility gate so both ONNX and RKNN debug behavior stays aligned.
+// The scorer needs these points for its origin/scale, pinch and
+// three-open-finger evidence. Landmark providers use the same list for a
+// visibility gate so model and JSON test behavior stays aligned.
 inline constexpr std::array<int, 18> kGeometryRequiredLandmarkIndices = {
     WRIST,
     THUMB_TIP,
@@ -76,7 +75,5 @@ Landmarks normalize_landmarks(const Landmarks& landmarks, const std::string& han
 double finger_extension(const Landmarks& normalized_landmarks, const std::string& finger);
 GeometryScores geometry_scores(const Landmarks& landmarks, const std::string& handedness = "");
 double rule_ok_score(const Landmarks& landmarks, const std::string& handedness = "");
-std::vector<double> feature_vector(const Landmarks& landmarks, const std::string& handedness = "");
-std::vector<std::string> feature_names();
 
 }  // namespace double_ok_gesture

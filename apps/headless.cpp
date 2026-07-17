@@ -9,7 +9,7 @@ int main(int argc, char** argv) {
         if (args.list_cameras) {
             return double_ok_gesture::write_demo_camera_list(std::cout);
         }
-        return double_ok_gesture::run_demo_headless(args, std::cout, std::cerr);
+        return double_ok_gesture::run_demo_headless(args, std::cout);
     } catch (const std::exception& exc) {
         std::cerr << "error: " << exc.what() << '\n';
         return 1;

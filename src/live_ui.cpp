@@ -459,8 +459,6 @@ std::string reason_title(const std::optional<CaptureGateDecision>& decision) {
             return ui_text("拉开双手间距", "SEPARATE HANDS");
         case GateReason::NeedDoubleOK:
             return ui_text("做出双手 OK", "MAKE DOUBLE OK");
-        case GateReason::AvoidDoubleOK:
-            return ui_text("避免双手 OK", "AVOID DOUBLE OK");
     }
     return ui_text("监测中", "MONITORING");
 }
@@ -489,8 +487,6 @@ std::string reason_hint(const std::optional<CaptureGateDecision>& decision) {
             return ui_text("请把两只手再分开一些。", "Separate your hands a little more.");
         case GateReason::NeedDoubleOK:
             return ui_text("请双手分开，并做出清晰 OK 手势。", "Make two clear OK gestures with separated hands.");
-        case GateReason::AvoidDoubleOK:
-            return ui_text("负样本采集中，请避免同时做双手 OK。", "Negative capture: avoid double OK gestures.");
     }
     return ui_text("正在监测采集条件。", "Monitoring capture conditions.");
 }
@@ -529,7 +525,7 @@ std::string hand_source_score(const HandPrediction& hand) {
                fixed(hand.handedness_confidence * 100.0, 1) + "%";
     }
     if (hand.box) {
-        return ui_text("检测 ", "POSE ") +
+        return ui_text("检测 ", "DETECT ") +
                fixed(hand.box->detection_score * 100.0, 1) + "%";
     }
     return ui_text("无手别分数", "NO SIDE SCORE");

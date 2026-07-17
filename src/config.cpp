@@ -144,38 +144,19 @@ void validate_runtime_config(const RuntimeConfig& config) {
             "stable_min_positive must be between 1 and stable_window");
     }
     require_probability(
-        config.recognizer.min_detection_confidence,
-        "min_detection_confidence");
+        config.onnx_hand.palm_detection_threshold,
+        "palm_detection_threshold");
     require_probability(
-        config.recognizer.min_tracking_confidence,
-        "min_tracking_confidence");
+        config.onnx_hand.hand_presence_threshold,
+        "hand_presence_threshold");
     require_probability(
-        config.recognizer.handedness_confidence_threshold,
-        "handedness_confidence_threshold");
-    if (config.recognizer.handedness_confidence_threshold < 0.5) {
+        config.onnx_hand.palm_nms_threshold,
+        "palm_nms_threshold");
+    if (config.onnx_hand.palm_model_path.empty() ||
+        config.onnx_hand.hand_model_path.empty()) {
         throw std::invalid_argument(
-            "handedness_confidence_threshold must be at least 0.5");
+            "palm_model_path and hand_model_path must not be empty");
     }
-
-    if (config.yolov8_pose.input_size < 32 ||
-        config.yolov8_pose.input_size % 32 != 0) {
-        throw std::invalid_argument(
-            "pose_input_size must be at least 32 and divisible by 32");
-    }
-    if (config.yolov8_pose.min_reliable_keypoints < 1 ||
-        config.yolov8_pose.min_reliable_keypoints > 21) {
-        throw std::invalid_argument(
-            "pose_min_reliable_keypoints must be in [1,21]");
-    }
-    require_probability(
-        config.yolov8_pose.min_detection_confidence,
-        "pose_min_detection_confidence");
-    require_probability(
-        config.yolov8_pose.min_keypoint_visibility,
-        "pose_min_keypoint_visibility");
-    require_probability(
-        config.yolov8_pose.nms_iou_threshold,
-        "pose_nms_iou_threshold");
 
     config.capture_gate.validate();
     if (!std::isfinite(config.data_capture.cooldown_sec) ||
@@ -202,18 +183,12 @@ RuntimeConfig load_runtime_config(const std::filesystem::path& path) {
             "ok_threshold",
             "stable_window",
             "stable_min_positive",
-            "min_detection_confidence",
-            "min_tracking_confidence",
-            "handedness_confidence_threshold",
             "input_mirrored",
-            "pose_model_path",
-            "pose_manifest_path",
-            "pose_input_size",
-            "pose_min_detection_confidence",
-            "pose_min_keypoint_visibility",
-            "pose_nms_iou_threshold",
-            "pose_min_reliable_keypoints",
-            "attribute_model_path",
+            "palm_model_path",
+            "hand_model_path",
+            "palm_detection_threshold",
+            "hand_presence_threshold",
+            "palm_nms_threshold",
             "capture_gate",
             "data_capture",
         },
@@ -228,60 +203,30 @@ RuntimeConfig load_runtime_config(const std::filesystem::path& path) {
         "",
         "stable_min_positive");
     set_if_present(
-        config.recognizer.min_detection_confidence,
-        root,
-        "",
-        "min_detection_confidence");
-    set_if_present(
-        config.recognizer.min_tracking_confidence,
-        root,
-        "",
-        "min_tracking_confidence");
-    set_if_present(
-        config.recognizer.handedness_confidence_threshold,
-        root,
-        "",
-        "handedness_confidence_threshold");
-    set_if_present(
-        config.recognizer.input_mirrored,
+        config.onnx_hand.input_mirrored,
         root,
         "",
         "input_mirrored");
 
     set_if_present(
-        config.yolov8_pose.model_path, root, "", "pose_model_path");
+        config.onnx_hand.palm_model_path, root, "", "palm_model_path");
     set_if_present(
-        config.yolov8_pose.manifest_path,
+        config.onnx_hand.hand_model_path, root, "", "hand_model_path");
+    set_if_present(
+        config.onnx_hand.palm_detection_threshold,
         root,
         "",
-        "pose_manifest_path");
+        "palm_detection_threshold");
     set_if_present(
-        config.yolov8_pose.input_size, root, "", "pose_input_size");
-    set_if_present(
-        config.yolov8_pose.min_detection_confidence,
+        config.onnx_hand.hand_presence_threshold,
         root,
         "",
-        "pose_min_detection_confidence");
+        "hand_presence_threshold");
     set_if_present(
-        config.yolov8_pose.min_keypoint_visibility,
+        config.onnx_hand.palm_nms_threshold,
         root,
         "",
-        "pose_min_keypoint_visibility");
-    set_if_present(
-        config.yolov8_pose.nms_iou_threshold,
-        root,
-        "",
-        "pose_nms_iou_threshold");
-    set_if_present(
-        config.yolov8_pose.min_reliable_keypoints,
-        root,
-        "",
-        "pose_min_reliable_keypoints");
-    set_if_present(
-        config.hand_attribute.model_path,
-        root,
-        "",
-        "attribute_model_path");
+        "palm_nms_threshold");
 
     if (const Json* gate = object_section(root, "capture_gate")) {
         reject_unknown_members(
@@ -361,16 +306,6 @@ RuntimeConfig load_runtime_config(const std::filesystem::path& path) {
 
     validate_runtime_config(config);
     return config;
-}
-
-RuntimeConfig load_runtime_config_or_default(
-    const std::optional<std::filesystem::path>& path) {
-    if (!path || path->empty()) {
-        RuntimeConfig config;
-        validate_runtime_config(config);
-        return config;
-    }
-    return load_runtime_config(*path);
 }
 
 void apply_threshold_override(

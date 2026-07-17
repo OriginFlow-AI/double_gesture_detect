@@ -7,11 +7,14 @@
 #include <QLabel>
 #include <QMainWindow>
 #include <QPixmap>
+#include <QScreen>
 #include <QShortcut>
 #include <QSizePolicy>
 #include <QTimer>
 #include <QVBoxLayout>
 #include <QWidget>
+#include <algorithm>
+#include <cmath>
 #include <filesystem>
 #include <string>
 #include <utility>
@@ -45,35 +48,20 @@ std::string model_label_for(
     const QtDashboardOptions& options,
     const RuntimeConfig& config) {
     if (options.landmark_backend == LandmarkBackend::Onnx) {
-        const std::string pose = options.pose_model_path
-                                     ? options.pose_model_path->filename().string()
-                                     : "YOLOv8-Pose";
-        const std::filesystem::path attribute_model =
-            options.model_path.value_or(config.hand_attribute.model_path);
-        return !attribute_model.empty()
-                   ? pose + " + " + attribute_model.filename().string()
-                   : pose + " / 实验几何规则";
-    }
-    if (options.model_path) {
-        if (options.landmark_backend == LandmarkBackend::Rknn) {
-            return "YOLOv8-Pose + " +
-                   options.model_path->filename().string();
-        }
-        return options.model_path->filename().string();
+        const auto palm = options.palm_model_path.value_or(
+            config.onnx_hand.palm_model_path);
+        const auto hand = options.hand_model_path.value_or(
+            config.onnx_hand.hand_model_path);
+        return "MediaPipe ONNX FP32 · " + palm.filename().string() +
+               " + " + hand.filename().string();
     }
     switch (options.landmark_backend) {
         case LandmarkBackend::Onnx:
-            return "YOLOv8-Pose / ONNX";
-        case LandmarkBackend::Rknn:
-            return "YOLOv8-Pose / RKNN";
-        case LandmarkBackend::OpenCVDebug:
-            return "OpenCV 调试框";
+            return "MediaPipe / ONNX";
         case LandmarkBackend::None:
             return "未启用关键点";
-        case LandmarkBackend::MediaPipe:
-            return "MediaPipe 21 点";
         case LandmarkBackend::LandmarksJson:
-            return "测试后端 / 非 YOLOv8 推理";
+            return "JSON 测试后端";
     }
     return "几何规则";
 }
@@ -96,6 +84,7 @@ struct QtDashboard::Impl {
     CaptureWriter capture_writer;
     cv::Mat last_rendered_frame;
     int frames = 0;
+    bool stopping = false;
 
     QLabel* video_label = nullptr;
 
@@ -145,7 +134,22 @@ struct QtDashboard::Impl {
     }
 
     void connect_actions() {
-        QObject::connect(&timer, &QTimer::timeout, [&]() { update_frame(); });
+        timer.setSingleShot(true);
+        QObject::connect(&timer, &QTimer::timeout, [&]() {
+            update_frame();
+            if (!stopping) {
+                timer.start(frame_interval_ms());
+            }
+        });
+    }
+
+    int frame_interval_ms() const {
+        if (options.target_fps <= 0.0) {
+            return 1;
+        }
+        return std::max(
+            1,
+            static_cast<int>(std::lround(1000.0 / options.target_fps)));
     }
 
     void present_dashboard(const cv::Mat& dashboard) {
@@ -222,17 +226,26 @@ struct QtDashboard::Impl {
         present_dashboard(dashboard);
 
         if (options.max_frames > 0 && frames >= options.max_frames) {
+            stopping = true;
             application.quit();
         }
     }
 
     int run() {
-        timer.start(1);
+        timer.start(0);
         if (options.fullscreen) {
             window.showFullScreen();
         } else {
+            if (const QScreen* screen = application.primaryScreen()) {
+                const QRect available = screen->availableGeometry();
+                window.move(
+                    available.x() + (available.width() - window.width()) / 2,
+                    available.y() + (available.height() - window.height()) / 2);
+            }
             window.show();
         }
+        window.raise();
+        window.activateWindow();
         return application.exec();
     }
 };

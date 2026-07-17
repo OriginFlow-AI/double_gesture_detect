@@ -1,12 +1,12 @@
 # Raw Data
 
-本目录放本地下载的原始数据，不提交大文件。
+本目录保存实时门控产生的原始图片和配套 metadata，不提交大文件。
 
-当前需要：
+默认输出目录：
 
 ```text
-hagrid/annotations_zip/annotations.zip
-hagrid/annotations/
+captures/
 ```
 
-当前项目训练 landmark 模型，所以不需要下载 HaGRID 原始图片包。
+每张图片对应一个 `.jpg.json` 文件，使用 `double_ok_capture_v2` schema。自动采集标签
+来自运行时预测，后续训练前仍需人工复核。

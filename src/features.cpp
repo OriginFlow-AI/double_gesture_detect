@@ -19,8 +19,6 @@ const std::unordered_map<std::string, FingerChain> kFingerChains = {
     {"pinky", {PINKY_MCP, PINKY_PIP, PINKY_DIP, PINKY_TIP}},
 };
 
-const std::array<std::string, 5> kFingerOrder = {"thumb", "index", "middle", "ring", "pinky"};
-
 Point3 operator-(const Point3& lhs, const Point3& rhs) {
     return {lhs.x - rhs.x, lhs.y - rhs.y, lhs.z - rhs.z};
 }
@@ -174,71 +172,6 @@ GeometryScores geometry_scores(const Landmarks& landmarks, const std::string& ha
 
 double rule_ok_score(const Landmarks& landmarks, const std::string& handedness) {
     return geometry_scores(landmarks, handedness).ok_score;
-}
-
-std::vector<double> feature_vector(const Landmarks& landmarks, const std::string& handedness) {
-    const Landmarks points = normalize_landmarks(landmarks, handedness);
-    std::vector<double> features;
-    features.reserve(96);
-
-    for (const Point3& point : points) {
-        features.push_back(point.x);
-        features.push_back(point.y);
-        features.push_back(point.z);
-    }
-
-    const std::array<double, 7> distances = {
-        distance(points, THUMB_TIP, INDEX_TIP),
-        distance(points, THUMB_TIP, MIDDLE_TIP),
-        distance(points, INDEX_TIP, MIDDLE_TIP),
-        distance(points, INDEX_TIP, RING_TIP),
-        distance(points, INDEX_TIP, PINKY_TIP),
-        distance(points, THUMB_MCP, INDEX_MCP),
-        distance(points, INDEX_MCP, PINKY_MCP),
-    };
-    features.insert(features.end(), distances.begin(), distances.end());
-
-    const std::array<double, 5> tip_distances = {
-        distance(points, THUMB_TIP, WRIST),
-        distance(points, INDEX_TIP, WRIST),
-        distance(points, MIDDLE_TIP, WRIST),
-        distance(points, RING_TIP, WRIST),
-        distance(points, PINKY_TIP, WRIST),
-    };
-    features.insert(features.end(), tip_distances.begin(), tip_distances.end());
-
-    for (const std::string& finger : kFingerOrder) {
-        features.push_back(finger_extension(points, finger));
-    }
-    for (const std::string& finger : kFingerOrder) {
-        const auto chain = kFingerChains.at(finger);
-        features.push_back(angle(points, chain[0], chain[1], chain[2]));
-        features.push_back(angle(points, chain[1], chain[2], chain[3]));
-    }
-
-    const GeometryScores geom = geometry_scores(points);
-    features.push_back(geom.pinch);
-    features.push_back(geom.middle_extension);
-    features.push_back(geom.ring_extension);
-    features.push_back(geom.pinky_extension);
-    features.push_back(geom.open_finger_mean);
-    features.push_back(geom.ok_score);
-    return features;
-}
-
-std::vector<std::string> feature_names() {
-    std::vector<std::string> names;
-    names.reserve(96);
-    for (int i = 0; i < 21; ++i) {
-        names.push_back("lm_" + std::to_string(i) + "_x");
-        names.push_back("lm_" + std::to_string(i) + "_y");
-        names.push_back("lm_" + std::to_string(i) + "_z");
-    }
-    const int extra_count = static_cast<int>(feature_vector(Landmarks{}).size()) - static_cast<int>(names.size());
-    for (int i = 0; i < extra_count; ++i) {
-        names.push_back("geom_" + std::to_string(i));
-    }
-    return names;
 }
 
 }  // namespace double_ok_gesture

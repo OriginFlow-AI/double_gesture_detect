@@ -1,10 +1,7 @@
 #include "double_ok_gesture/capture_gate.hpp"
 
 #include <algorithm>
-#include <array>
-#include <chrono>
 #include <cmath>
-#include <iostream>
 #include <stdexcept>
 
 #include "double_ok_gesture/json.hpp"
@@ -96,9 +93,8 @@ CaptureGateDecision decision(
     bool hands_visible,
     bool hands_separated,
     bool double_ok,
-    int hand_count,
-    std::optional<bool> gesture_ok = std::nullopt) {
-    const bool final_gesture_ok = gesture_ok.value_or(config.require_double_ok ? double_ok : true);
+    int hand_count) {
+    const bool final_gesture_ok = config.require_double_ok ? double_ok : true;
     return {
         reason == GateReason::Ready,
         reason,
@@ -111,11 +107,6 @@ CaptureGateDecision decision(
         final_gesture_ok,
         hand_count,
     };
-}
-
-double monotonic_seconds() {
-    using Clock = std::chrono::steady_clock;
-    return std::chrono::duration<double>(Clock::now().time_since_epoch()).count();
 }
 
 }  // namespace
@@ -152,8 +143,6 @@ const char* gate_reason_value(GateReason reason) {
             return "hands_too_close";
         case GateReason::NeedDoubleOK:
             return "need_double_ok";
-        case GateReason::AvoidDoubleOK:
-            return "avoid_double_ok";
     }
     return "unknown";
 }
@@ -176,40 +165,8 @@ const char* gate_prompt(GateReason reason) {
             return "请将双手分开一些";
         case GateReason::NeedDoubleOK:
             return "请双手分开并做出 OK 手势";
-        case GateReason::AvoidDoubleOK:
-            return "负样本采集中，请不要同时做双手 OK";
     }
     return "未知状态";
-}
-
-GateReason gate_reason_from_string(const std::string& value) {
-    const std::array<GateReason, 9> reasons = {
-        GateReason::Ready,
-        GateReason::GlassesPoseMissing,
-        GateReason::GlassesPoseBad,
-        GateReason::NeedTwoHands,
-        GateReason::HandsOutOfFrame,
-        GateReason::HandsNotCentered,
-        GateReason::HandsTooClose,
-        GateReason::NeedDoubleOK,
-        GateReason::AvoidDoubleOK,
-    };
-    for (GateReason reason : reasons) {
-        if (value == gate_reason_value(reason)) {
-            return reason;
-        }
-    }
-    throw std::invalid_argument("Unsupported gate reason: " + value);
-}
-
-StereoGateMode stereo_gate_mode_from_string(const std::string& value) {
-    if (value == "left") {
-        return StereoGateMode::Left;
-    }
-    if (value == "both") {
-        return StereoGateMode::Both;
-    }
-    throw std::invalid_argument("Unsupported stereo gate mode: " + value);
 }
 
 std::optional<GlassesPose> load_glasses_pose(const std::filesystem::path& path) {
@@ -323,99 +280,6 @@ CaptureGateDecision evaluate_capture_gate(
         hands_separated,
         double_ok,
         hand_count);
-}
-
-CaptureGateDecision evaluate_labeled_capture_gate(
-    const DoubleOKResult& result,
-    const std::string& label,
-    const CaptureGateConfig& config,
-    const std::optional<GlassesPose>& glasses_pose) {
-    if (label == "double_ok") {
-        return evaluate_capture_gate(result, config, glasses_pose);
-    }
-    if (label != "not_double_ok") {
-        throw std::invalid_argument("Unsupported capture label: " + label);
-    }
-
-    CaptureGateConfig geometry_config = config;
-    geometry_config.require_double_ok = false;
-    CaptureGateDecision geometry_decision = evaluate_capture_gate(result, geometry_config, glasses_pose);
-    if (!geometry_decision.ready) {
-        geometry_decision.gesture_ok = !result.double_ok;
-        return geometry_decision;
-    }
-    if (result.double_ok) {
-        return decision(
-            GateReason::AvoidDoubleOK,
-            geometry_config,
-            geometry_decision.glasses_pose_ok,
-            geometry_decision.hands_centered,
-            geometry_decision.hands_visible,
-            geometry_decision.hands_separated,
-            result.double_ok,
-            geometry_decision.hand_count,
-            false);
-    }
-    return decision(
-        GateReason::Ready,
-        geometry_config,
-        geometry_decision.glasses_pose_ok,
-        geometry_decision.hands_centered,
-        geometry_decision.hands_visible,
-        geometry_decision.hands_separated,
-        result.double_ok,
-        geometry_decision.hand_count,
-        true);
-}
-
-StereoCaptureGateDecision evaluate_stereo_capture_gate(
-    const DoubleOKResult& left_result,
-    const std::optional<DoubleOKResult>& right_result,
-    const CaptureGateConfig& config,
-    const std::optional<GlassesPose>& glasses_pose,
-    StereoGateMode mode) {
-    const CaptureGateDecision left_decision = evaluate_capture_gate(left_result, config, glasses_pose);
-    if (mode == StereoGateMode::Left) {
-        return {left_decision.ready, left_decision.reason, left_decision.prompt, left_decision, std::nullopt};
-    }
-    if (!right_result) {
-        throw std::invalid_argument("right_result is required when stereo gate mode is both");
-    }
-
-    const CaptureGateDecision right_decision = evaluate_capture_gate(*right_result, config, glasses_pose);
-    if (left_decision.ready && right_decision.ready) {
-        return {true, GateReason::Ready, gate_prompt(GateReason::Ready), left_decision, right_decision};
-    }
-    if (!left_decision.ready && !right_decision.ready) {
-        const std::string prompt = left_decision.reason == right_decision.reason
-                                       ? "双目: " + left_decision.prompt
-                                       : "左眼: " + left_decision.prompt + "; 右眼: " + right_decision.prompt;
-        return {false, left_decision.reason, prompt, left_decision, right_decision};
-    }
-    const bool left_blocked = !left_decision.ready;
-    const CaptureGateDecision blocked = left_blocked ? left_decision : right_decision;
-    const std::string view = left_blocked ? "左眼" : "右眼";
-    return {false, blocked.reason, view + ": " + blocked.prompt, left_decision, right_decision};
-}
-
-PromptSpeaker::PromptSpeaker(bool enabled, double min_interval_sec)
-    : enabled_(enabled), min_interval_sec_(min_interval_sec) {
-    if (!std::isfinite(min_interval_sec_) || min_interval_sec_ < 0.0) {
-        throw std::invalid_argument("min_interval_sec must be finite and non-negative");
-    }
-}
-
-void PromptSpeaker::emit(const std::string& prompt) {
-    const double now = monotonic_seconds();
-    if (prompt == last_prompt_ && now - last_time_ < min_interval_sec_) {
-        return;
-    }
-    last_prompt_ = prompt;
-    last_time_ = now;
-    std::cout << prompt << '\n';
-    if (enabled_) {
-        std::cerr << "voice prompts are not spawned by the C++ build; prompt=" << prompt << '\n';
-    }
 }
 
 }  // namespace double_ok_gesture

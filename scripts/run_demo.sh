@@ -7,7 +7,6 @@ CMAKE_BUILD_TYPE="${CMAKE_BUILD_TYPE:-Release}"
 JOBS="${JOBS:-2}"
 LIST_CAMERAS=0
 HAS_LANDMARK_BACKEND=0
-HAS_ATTRIBUTE_MODEL=0
 EXPLICIT_CAMERA=0
 
 for arg in "$@"; do
@@ -17,9 +16,6 @@ for arg in "$@"; do
   fi
   if [[ "$arg" == "--landmark-backend" ]]; then
     HAS_LANDMARK_BACKEND=1
-  fi
-  if [[ "$arg" == "--model" ]]; then
-    HAS_ATTRIBUTE_MODEL=1
   fi
 done
 
@@ -67,17 +63,12 @@ fi
 CMAKE_ARGS=(
   -DCMAKE_BUILD_TYPE="$CMAKE_BUILD_TYPE"
   -DDOUBLE_OK_BUILD_QT_DEMO=ON
-  -DDOUBLE_OK_BUILD_CAPTURE_TOOL=OFF
 )
-if [[ "$(uname -m)" == "aarch64" ]]; then
-  RKNN_ROOT="${RKNN_ROOT:-$PWD/third_party/rknn_runtime}"
-  CMAKE_ARGS+=(
-    -DDOUBLE_OK_ENABLE_RKNN=ON
-    -DRKNN_ROOT="$RKNN_ROOT"
-  )
-fi
+echo "[double-ok] Configuring $BUILD_DIR..." >&2
 cmake -S . -B "$BUILD_DIR" "${CMAKE_ARGS[@]}" >/dev/null
+echo "[double-ok] Building double-ok-demo..." >&2
 cmake --build "$BUILD_DIR" --target double-ok-demo -j "$JOBS" >/dev/null
+echo "[double-ok] Starting double-ok-demo..." >&2
 
 clean_ld_library_path() {
   local cleaned=""
@@ -124,9 +115,6 @@ QT_PLUGIN_PATH="${QT_PLUGIN_PATH:+$QT_PLUGIN_PATH:}$SYSTEM_QT_PLUGIN_PATH"
 
 run_double_ok_demo() {
   local runtime_library_path="$(clean_ld_library_path)"
-  if [[ "$(uname -m)" == "aarch64" ]]; then
-    runtime_library_path="$PWD/third_party/rknn_runtime/aarch64${runtime_library_path:+:$runtime_library_path}"
-  fi
   LD_LIBRARY_PATH="$runtime_library_path" \
   QT_PLUGIN_PATH="$QT_PLUGIN_PATH" \
   QT_QPA_PLATFORM_PLUGIN_PATH="$SYSTEM_QT_PLATFORM_PLUGIN_PATH" \
@@ -138,14 +126,9 @@ if [[ "$LIST_CAMERAS" -eq 1 ]]; then
   exit $?
 fi
 
-MODEL_ARGS=()
-if [[ "$HAS_ATTRIBUTE_MODEL" -eq 0 && -n "${DOUBLE_OK_HAND_ATTRIBUTE_MODEL:-}" ]]; then
-  MODEL_ARGS+=(--model "$DOUBLE_OK_HAND_ATTRIBUTE_MODEL")
-fi
-
 BACKEND_ARGS=()
 if [[ "$HAS_LANDMARK_BACKEND" -eq 0 ]]; then
-  BACKEND_ARGS+=(--landmark-backend yolov8-rknn)
+  BACKEND_ARGS+=(--landmark-backend onnx)
 fi
 
 demo_args_for_camera() {
@@ -154,7 +137,6 @@ demo_args_for_camera() {
     --camera "$camera_source"
     --config configs/default.json
     --capture-gate
-    "${MODEL_ARGS[@]}"
     "${BACKEND_ARGS[@]}"
   )
 }

@@ -18,8 +18,8 @@ double_ok_gesture::QtDashboardOptions dashboard_options_from_demo_args(const dou
     options.capture_gate = args.capture_gate;
     options.glasses_pose = args.glasses_pose;
     options.landmark_backend = args.landmark_backend;
-    options.model_path = args.model;
-    options.pose_model_path = args.pose_model;
+    options.palm_model_path = args.palm_model;
+    options.hand_model_path = args.hand_model;
     return options;
 }
 
@@ -32,7 +32,7 @@ int main(int argc, char** argv) {
             return double_ok_gesture::write_demo_camera_list(std::cout);
         }
         if (args.headless) {
-            return double_ok_gesture::run_demo_headless(args, std::cout, std::cerr);
+            return double_ok_gesture::run_demo_headless(args, std::cout);
         }
 
         QApplication application(argc, argv);

@@ -11,16 +11,11 @@
 #include "double_ok_gesture/config.hpp"
 #include "double_ok_gesture/demo_app.hpp"
 #include "double_ok_gesture/features.hpp"
-#include "double_ok_gesture/hand_detector.hpp"
-#include "double_ok_gesture/json.hpp"
 #include "double_ok_gesture/landmark_provider.hpp"
 #include "double_ok_gesture/live_ui.hpp"
-#include "double_ok_gesture/model_io.hpp"
 #include "double_ok_gesture/recognizer.hpp"
-#include "double_ok_gesture/report.hpp"
 #include "double_ok_gesture/runtime.hpp"
 #include "double_ok_gesture/runtime_pipeline.hpp"
-#include "double_ok_gesture/training.hpp"
 
 namespace {
 
@@ -171,11 +166,14 @@ double_ok_gesture::DemoArgs parse_demo_args_for_test(std::vector<std::string> va
     return double_ok_gesture::parse_demo_args(static_cast<int>(argv.size()), argv.data());
 }
 
-void test_feature_vector_has_stable_shape() {
-    const auto vector = double_ok_gesture::feature_vector(make_ok_landmarks(), "Left");
-    EXPECT_EQ(vector.size(), 96U);
-    for (double value : vector) {
-        EXPECT_TRUE(std::isfinite(value));
+void test_normalized_landmarks_have_stable_shape() {
+    const auto landmarks =
+        double_ok_gesture::normalize_landmarks(make_ok_landmarks(), "Left");
+    EXPECT_EQ(landmarks.size(), 21U);
+    for (const auto& point : landmarks) {
+        EXPECT_TRUE(std::isfinite(point.x));
+        EXPECT_TRUE(std::isfinite(point.y));
+        EXPECT_TRUE(std::isfinite(point.z));
     }
 }
 
@@ -288,17 +286,6 @@ void test_capture_gate_requires_stable_double_ok() {
     EXPECT_EQ(unstable_double_ok.reason, double_ok_gesture::GateReason::NeedDoubleOK);
 }
 
-void test_negative_capture_gate() {
-    const auto negative = make_result({make_hand(0.4, 0.5), make_hand(0.6, 0.5, false)});
-    const auto decision = double_ok_gesture::evaluate_labeled_capture_gate(negative, "not_double_ok");
-    EXPECT_TRUE(decision.ready);
-    EXPECT_TRUE(decision.gesture_ok);
-
-    const auto positive = make_result({make_hand(0.4, 0.5), make_hand(0.6, 0.5)});
-    const auto rejected = double_ok_gesture::evaluate_labeled_capture_gate(positive, "not_double_ok");
-    EXPECT_EQ(rejected.reason, double_ok_gesture::GateReason::AvoidDoubleOK);
-}
-
 void test_recognizer_stability() {
     double_ok_gesture::DoubleOKRecognizer recognizer(double_ok_gesture::OKHandClassifier(0.5), 3, 2);
     const double_ok_gesture::DetectedHand left{make_ok_landmarks(), "Left", std::nullopt, false};
@@ -308,21 +295,6 @@ void test_recognizer_stability() {
     EXPECT_TRUE(first.double_ok);
     EXPECT_FALSE(first.stable_double_ok);
     EXPECT_TRUE(second.stable_double_ok);
-}
-
-void test_opencv_hand_detector_finds_skin_colored_regions() {
-    cv::Mat image(360, 640, CV_8UC3, cv::Scalar(20, 20, 20));
-    cv::ellipse(image, {200, 180}, {70, 105}, 0, 0, 360, cv::Scalar(80, 130, 200), -1, cv::LINE_AA);
-    cv::ellipse(image, {440, 180}, {70, 105}, 0, 0, 360, cv::Scalar(80, 130, 200), -1, cv::LINE_AA);
-    double_ok_gesture::OpenCVHandDetector detector({2, 0.003, 3.0});
-
-    const auto hands = detector.detect(image);
-
-    EXPECT_EQ(hands.size(), 2U);
-    EXPECT_TRUE(hands[0].ok_score.has_value());
-    EXPECT_TRUE(hands[0].landmarks_estimated);
-    EXPECT_TRUE(*hands[0].ok_score >= 0.0);
-    EXPECT_TRUE(*hands[0].ok_score <= 1.0);
 }
 
 void test_estimated_hands_do_not_draw_fake_keypoint_skeleton() {
@@ -410,24 +382,17 @@ void test_runtime_metrics() {
 }
 
 void test_landmark_backend_parser() {
-    EXPECT_EQ(double_ok_gesture::landmark_backend_from_string("yolov8-onnx"), double_ok_gesture::LandmarkBackend::Onnx);
-    EXPECT_EQ(double_ok_gesture::landmark_backend_from_string("rknn"), double_ok_gesture::LandmarkBackend::Rknn);
-    EXPECT_EQ(double_ok_gesture::landmark_backend_from_string("mediapipe"), double_ok_gesture::LandmarkBackend::MediaPipe);
+    EXPECT_EQ(double_ok_gesture::landmark_backend_from_string("onnx"), double_ok_gesture::LandmarkBackend::Onnx);
+    EXPECT_EQ(double_ok_gesture::landmark_backend_from_string("mediapipe-onnx"), double_ok_gesture::LandmarkBackend::Onnx);
     EXPECT_EQ(
         double_ok_gesture::landmark_backend_from_string("landmarks-json"),
         double_ok_gesture::LandmarkBackend::LandmarksJson);
-    EXPECT_EQ(
-        double_ok_gesture::landmark_backend_from_string("opencv-heuristic"),
-        double_ok_gesture::LandmarkBackend::OpenCVDebug);
     EXPECT_EQ(double_ok_gesture::landmark_backend_from_string("none"), double_ok_gesture::LandmarkBackend::None);
     EXPECT_TRUE(double_ok_gesture::landmark_backend_available_in_current_build(double_ok_gesture::LandmarkBackend::LandmarksJson));
-    EXPECT_TRUE(double_ok_gesture::landmark_backend_available_in_current_build(double_ok_gesture::LandmarkBackend::MediaPipe));
-    EXPECT_TRUE(double_ok_gesture::landmark_backend_available_in_current_build(double_ok_gesture::LandmarkBackend::OpenCVDebug));
     EXPECT_TRUE(double_ok_gesture::landmark_backend_available_in_current_build(double_ok_gesture::LandmarkBackend::Onnx));
     EXPECT_EQ(
         std::string(double_ok_gesture::landmark_backend_value(double_ok_gesture::LandmarkBackend::Onnx)),
-        std::string("yolov8-onnx"));
-    EXPECT_FALSE(double_ok_gesture::landmark_backend_available_in_current_build(double_ok_gesture::LandmarkBackend::Rknn));
+        std::string("onnx"));
 
     bool threw = false;
     try {
@@ -445,10 +410,10 @@ void test_demo_args_parse_and_map_options() {
         "/dev/video42",
         "--config",
         "configs/test.json",
-        "--model",
-        "models/test.txt",
-        "--pose-model",
-        "models/hand_pose.onnx",
+        "--palm-model",
+        "models/palm.onnx",
+        "--hand-model",
+        "models/hand.onnx",
         "--threshold",
         "0.75",
         "--width",
@@ -480,13 +445,10 @@ void test_demo_args_parse_and_map_options() {
         "--capture-cooldown",
         "2.5",
         "--disable-auto-capture",
-        "--voice-prompts",
-        "--prompt-interval",
-        "5",
         "--max-frames",
         "3",
         "--landmark-backend",
-        "opencv-heuristic",
+        "landmarks-json",
         "--landmarks-json",
         "configs/debug_landmarks.json",
     });
@@ -497,10 +459,10 @@ void test_demo_args_parse_and_map_options() {
     EXPECT_NEAR(args.camera.fps, 30.0, 1e-12);
     EXPECT_EQ(args.camera.fourcc, std::string("MJPG"));
     EXPECT_EQ(args.config.string(), std::string("configs/test.json"));
-    EXPECT_TRUE(args.model.has_value());
-    EXPECT_EQ(args.model->string(), std::string("models/test.txt"));
-    EXPECT_TRUE(args.pose_model.has_value());
-    EXPECT_EQ(args.pose_model->string(), std::string("models/hand_pose.onnx"));
+    EXPECT_TRUE(args.palm_model.has_value());
+    EXPECT_EQ(args.palm_model->string(), std::string("models/palm.onnx"));
+    EXPECT_TRUE(args.hand_model.has_value());
+    EXPECT_EQ(args.hand_model->string(), std::string("models/hand.onnx"));
     EXPECT_TRUE(args.threshold.has_value());
     EXPECT_NEAR(*args.threshold, 0.75, 1e-12);
     EXPECT_TRUE(args.capture_gate);
@@ -517,15 +479,15 @@ void test_demo_args_parse_and_map_options() {
     EXPECT_NEAR(*args.capture_cooldown_sec, 2.5, 1e-12);
     EXPECT_TRUE(args.disable_auto_capture);
     EXPECT_EQ(args.max_frames, 3);
-    EXPECT_EQ(args.landmark_backend, double_ok_gesture::LandmarkBackend::OpenCVDebug);
+    EXPECT_EQ(args.landmark_backend, double_ok_gesture::LandmarkBackend::LandmarksJson);
     EXPECT_TRUE(args.landmarks_json.has_value());
     EXPECT_EQ(args.landmarks_json->string(), std::string("configs/debug_landmarks.json"));
 
     const auto runtime_options = double_ok_gesture::demo_runtime_options(args);
     EXPECT_EQ(runtime_options.camera.source, args.camera.source);
     EXPECT_EQ(runtime_options.config_path.string(), args.config.string());
-    EXPECT_EQ(runtime_options.model_path->string(), args.model->string());
-    EXPECT_EQ(runtime_options.pose_model_path->string(), args.pose_model->string());
+    EXPECT_EQ(runtime_options.palm_model_path->string(), args.palm_model->string());
+    EXPECT_EQ(runtime_options.hand_model_path->string(), args.hand_model->string());
     EXPECT_TRUE(runtime_options.threshold.has_value());
     EXPECT_TRUE(runtime_options.require_glasses_pose);
     EXPECT_EQ(runtime_options.capture_output_dir->string(), args.capture_output_dir->string());
@@ -557,23 +519,10 @@ void test_demo_args_reject_missing_value() {
     EXPECT_TRUE(threw);
 }
 
-void test_onnx_backend_requires_explicit_pose_model_without_fallback() {
-    double_ok_gesture::RuntimeOptions options;
-    options.landmark_backend = double_ok_gesture::LandmarkBackend::Onnx;
-    options.config_path = std::filesystem::path("..") / "configs/default.json";
-    std::string message;
-    try {
-        (void)double_ok_gesture::make_runtime(options);
-    } catch (const std::exception& error) {
-        message = error.what();
-    }
-    EXPECT_TRUE(message.find("requires --pose-model") != std::string::npos);
-}
-
 void test_null_landmark_provider_returns_empty() {
-    double_ok_gesture::NullHandLandmarkProvider provider("rknn");
+    double_ok_gesture::NullHandLandmarkProvider provider("none");
     const cv::Mat frame(16, 16, CV_8UC3, cv::Scalar(0, 0, 0));
-    EXPECT_EQ(provider.info().name, std::string("rknn"));
+    EXPECT_EQ(provider.info().name, std::string("none"));
     EXPECT_FALSE(provider.info().available);
     EXPECT_TRUE(provider.detect(frame).empty());
 }
@@ -602,46 +551,8 @@ void test_capture_writer_skips_when_not_ready() {
     double_ok_gesture::CaptureGateDecision decision;
     decision.ready = false;
 
-    EXPECT_FALSE(writer.maybe_save(frame, result, decision, "opencv-heuristic").has_value());
+    EXPECT_FALSE(writer.maybe_save(frame, result, decision, "test").has_value());
     EXPECT_EQ(writer.saved_count(), 0);
-}
-
-void test_report_handles_missing_csv() {
-    const auto summary = double_ok_gesture::scan_feature_csv(
-        std::filesystem::temp_directory_path() / "double_ok_missing_features.csv");
-    EXPECT_FALSE(summary.file.exists);
-    EXPECT_EQ(summary.row_count, 0U);
-    EXPECT_EQ(summary.feature_count, 0U);
-}
-
-void test_report_html_contains_key_sections() {
-    double_ok_gesture::CsvSummary csv;
-    csv.file.path = "data/processed/hagrid_ok_features.csv";
-    csv.file.exists = true;
-    csv.file.size_label = "1 KB";
-    csv.row_count = 2;
-    csv.positive_count = 1;
-    csv.negative_count = 1;
-    csv.feature_count = 96;
-    csv.column_count = 102;
-    csv.split_counts["train"] = 2;
-    csv.gesture_counts["ok"] = 1;
-    csv.gesture_counts["palm"] = 1;
-
-    double_ok_gesture::FileSummary model;
-    model.path = "models/ok_hand_numpy_logreg.pkl";
-    model.exists = true;
-    model.size_label = "2 KB";
-
-    const auto html = double_ok_gesture::render_gui_report(
-        "configs/default.json",
-        double_ok_gesture::RuntimeConfig{},
-        csv,
-        model);
-    EXPECT_TRUE(html.find("Double OK GUI") != std::string::npos);
-    EXPECT_TRUE(html.find("21 点关键点示意") != std::string::npos);
-    EXPECT_TRUE(html.find("MediaPipe 21 点手部关键点示意") != std::string::npos);
-    EXPECT_TRUE(html.find("门控模拟器") != std::string::npos);
 }
 
 void test_config_and_pose_loading() {
@@ -667,49 +578,18 @@ void test_config_and_pose_loading() {
     EXPECT_NEAR(*pose->roll, 1.0, 1e-12);
 }
 
-void test_json_parser_reads_hagrid_shape() {
-    const auto json = double_ok_gesture::parse_json(
-        R"({"image_001":{"label":"ok","hand_landmarks":[[[0,0,0],[0,0,0],[0,0,0],[0,0,0],[0,0,0],[0,0,0],[0,0,0],[0,0,0],[0,0,0],[0,0,0],[0,0,0],[0,0,0],[0,0,0],[0,0,0],[0,0,0],[0,0,0],[0,0,0],[0,0,0],[0,0,0],[0,0,0],[0,0,0]]]}})");
-    EXPECT_TRUE(json.is_object());
-    const auto* item = json.get("image_001");
-    EXPECT_TRUE(item != nullptr);
-    EXPECT_EQ(item->get("label")->as_string(), std::string("ok"));
-    EXPECT_EQ(item->get("hand_landmarks")->as_array().front().as_array().size(), 21U);
-}
-
-void test_training_and_model_io() {
-    const auto csv = std::filesystem::temp_directory_path() / "double_ok_cpp_features.csv";
-    {
-        std::ofstream out(csv);
-        out << "split,target,lm_0_x,lm_0_y\n";
-        out << "train,0,0,0\n";
-        out << "train,0,0.1,0\n";
-        out << "train,1,1,1\n";
-        out << "train,1,1.1,1\n";
-    }
-    const auto dataset = double_ok_gesture::load_feature_csv(csv);
-    const auto split = double_ok_gesture::split_data(dataset, 42);
-    const auto model = double_ok_gesture::train_logistic_regression(split.x_train, split.y_train, dataset.feature_columns, 20);
-    const auto model_path = std::filesystem::temp_directory_path() / "double_ok_cpp_model.txt";
-    double_ok_gesture::save_model_artifact(model_path, model);
-    const auto loaded = double_ok_gesture::load_model_artifact(model_path);
-    EXPECT_EQ(loaded.coef.size(), model.coef.size());
-}
-
 }  // namespace
 
 int main() {
     const std::vector<std::pair<std::string, void (*)()>> tests = {
-        {"feature_vector_has_stable_shape", test_feature_vector_has_stable_shape},
+        {"normalized_landmarks_have_stable_shape", test_normalized_landmarks_have_stable_shape},
         {"rule_score_prefers_ok_over_open_palm", test_rule_score_prefers_ok_over_open_palm},
         {"rule_score_rejects_degenerate_pose_and_is_similarity_invariant", test_rule_score_rejects_degenerate_pose_and_is_similarity_invariant},
         {"geometry_fallback_uses_metric_points_and_visibility_gate", test_geometry_fallback_uses_metric_points_and_visibility_gate},
         {"capture_gate_ready_and_blocks", test_capture_gate_ready_and_blocks},
         {"capture_gate_requires_double_ok_and_centered", test_capture_gate_requires_double_ok_and_centered},
         {"capture_gate_requires_stable_double_ok", test_capture_gate_requires_stable_double_ok},
-        {"negative_capture_gate", test_negative_capture_gate},
         {"recognizer_stability", test_recognizer_stability},
-        {"opencv_hand_detector_finds_skin_colored_regions", test_opencv_hand_detector_finds_skin_colored_regions},
         {"estimated_hands_do_not_draw_fake_keypoint_skeleton", test_estimated_hands_do_not_draw_fake_keypoint_skeleton},
         {"dashboard_renders_compact_and_regular_layouts", test_dashboard_renders_compact_and_regular_layouts},
         {"runtime_metrics", test_runtime_metrics},
@@ -717,15 +597,10 @@ int main() {
         {"demo_args_parse_and_map_options", test_demo_args_parse_and_map_options},
         {"demo_args_list_cameras_stops_parsing", test_demo_args_list_cameras_stops_parsing},
         {"demo_args_reject_missing_value", test_demo_args_reject_missing_value},
-        {"onnx_backend_requires_explicit_pose_model_without_fallback", test_onnx_backend_requires_explicit_pose_model_without_fallback},
         {"null_landmark_provider_returns_empty", test_null_landmark_provider_returns_empty},
         {"json_landmark_provider_reads_real_21_point_hands", test_json_landmark_provider_reads_real_21_point_hands},
         {"capture_writer_skips_when_not_ready", test_capture_writer_skips_when_not_ready},
-        {"report_handles_missing_csv", test_report_handles_missing_csv},
-        {"report_html_contains_key_sections", test_report_html_contains_key_sections},
         {"config_and_pose_loading", test_config_and_pose_loading},
-        {"json_parser_reads_hagrid_shape", test_json_parser_reads_hagrid_shape},
-        {"training_and_model_io", test_training_and_model_io},
     };
 
     int failed = 0;

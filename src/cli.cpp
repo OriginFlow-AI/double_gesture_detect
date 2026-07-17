@@ -39,13 +39,6 @@ int parse_int_argument(std::string_view value, std::string_view option) {
     return parse_integral<int>(value, option, "an integer");
 }
 
-unsigned int parse_unsigned_argument(
-    std::string_view value,
-    std::string_view option) {
-    return parse_integral<unsigned int>(
-        value, option, "a non-negative integer");
-}
-
 double parse_finite_double_argument(
     std::string_view value,
     std::string_view option) {

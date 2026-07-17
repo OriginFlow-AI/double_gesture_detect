@@ -13,26 +13,17 @@ struct RecognizerConfig {
     double ok_threshold = 0.68;
     int stable_window = 5;
     int stable_min_positive = 3;
-    double min_detection_confidence = 0.55;
-    double min_tracking_confidence = 0.55;
-    double handedness_confidence_threshold = 0.65;
+};
+
+struct OnnxHandConfig {
+    std::filesystem::path palm_model_path =
+        "models/opencv_zoo/palm_detection_mediapipe_2023feb.onnx";
+    std::filesystem::path hand_model_path =
+        "models/opencv_zoo/handpose_estimation_mediapipe_2023feb_opencv46.onnx";
+    double palm_detection_threshold = 0.55;
+    double hand_presence_threshold = 0.80;
+    double palm_nms_threshold = 0.30;
     bool input_mirrored = false;
-};
-
-struct YoloV8PoseConfig {
-    std::filesystem::path model_path =
-        "models/rk3588/hand_pose_640_fp.rknn";
-    std::filesystem::path manifest_path =
-        "models/rk3588/hand_pose_640_fp.rknn.manifest.json";
-    int input_size = 640;
-    double min_detection_confidence = 0.55;
-    double min_keypoint_visibility = 0.55;
-    double nms_iou_threshold = 0.45;
-    int min_reliable_keypoints = 8;
-};
-
-struct HandAttributeConfig {
-    std::filesystem::path model_path;
 };
 
 struct CameraConfig {
@@ -49,20 +40,18 @@ struct CameraConfig {
 
 struct DataCaptureConfig {
     bool enabled = true;
-    std::filesystem::path output_dir = "data/raw/rv1126_gate";
+    std::filesystem::path output_dir = "data/raw/captures";
     double cooldown_sec = 1.0;
 };
 
 struct RuntimeConfig {
     RecognizerConfig recognizer;
-    YoloV8PoseConfig yolov8_pose;
-    HandAttributeConfig hand_attribute;
+    OnnxHandConfig onnx_hand;
     CaptureGateConfig capture_gate;
     DataCaptureConfig data_capture;
 };
 
 RuntimeConfig load_runtime_config(const std::filesystem::path& path);
-RuntimeConfig load_runtime_config_or_default(const std::optional<std::filesystem::path>& path);
 void validate_runtime_config(const RuntimeConfig& config);
 void apply_threshold_override(RuntimeConfig& config, std::optional<double> threshold);
 void require_glasses_pose(RuntimeConfig& config);

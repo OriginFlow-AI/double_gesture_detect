@@ -14,7 +14,6 @@
 #include "double_ok_gesture/cli.hpp"
 #include "double_ok_gesture/config.hpp"
 #include "double_ok_gesture/json.hpp"
-#include "double_ok_gesture/model_io.hpp"
 
 namespace {
 
@@ -143,60 +142,12 @@ void test_cli_numbers_require_complete_finite_tokens() {
         (void)double_ok_gesture::parse_int_argument("42frames", "--count");
     });
     expect_throws<std::invalid_argument>([]() {
-        (void)double_ok_gesture::parse_unsigned_argument("-1", "--seed");
-    });
-    expect_throws<std::invalid_argument>([]() {
         (void)double_ok_gesture::parse_finite_double_argument(
             "nan", "--threshold");
     });
 }
 
-class CurrentPathGuard {
-public:
-    CurrentPathGuard() : original_(std::filesystem::current_path()) {}
-    ~CurrentPathGuard() {
-        std::error_code ignored;
-        std::filesystem::current_path(original_, ignored);
-    }
-
-private:
-    std::filesystem::path original_;
-};
-
-void test_model_round_trip_without_parent_directory() {
-    const auto directory = fixture_path("model_io_directory");
-    std::filesystem::remove_all(directory);
-    std::filesystem::create_directories(directory);
-    CurrentPathGuard guard;
-    std::filesystem::current_path(directory);
-
-    double_ok_gesture::LinearModelArtifact model;
-    model.mean = {0.0, 1.0};
-    model.scale = {1.0, 2.0};
-    model.coef = {0.5, -0.25};
-    model.intercept = 0.1;
-    double_ok_gesture::save_model_artifact("model.txt", model);
-    const auto loaded = double_ok_gesture::load_model_artifact("model.txt");
-    EXPECT_EQ(loaded.coef.size(), 2U);
-    EXPECT_TRUE(loaded.feature_columns.empty());
-}
-
-void test_model_and_capture_config_reject_invalid_artifacts() {
-    const auto path = fixture_path("duplicate_model.txt");
-    write_text(
-        path,
-        "double_ok_model_v1\n"
-        "model_type numpy_logreg\n"
-        "feature_count 1\n"
-        "intercept 0\n"
-        "mean 0\n"
-        "scale 1\n"
-        "coef 1\n"
-        "coef 2\n");
-    expect_throws<std::runtime_error>([&]() {
-        (void)double_ok_gesture::load_model_artifact(path);
-    });
-
+void test_capture_config_rejects_invalid_values() {
     double_ok_gesture::DataCaptureConfig capture;
     capture.cooldown_sec = -1.0;
     expect_throws<std::invalid_argument>([&]() {
@@ -266,8 +217,7 @@ int main() {
         {"config_validation_covers_overrides", test_config_validation_covers_overrides},
         {"json_unicode_and_ambiguous_input", test_json_unicode_and_ambiguous_input},
         {"cli_numbers_require_complete_finite_tokens", test_cli_numbers_require_complete_finite_tokens},
-        {"model_round_trip_without_parent_directory", test_model_round_trip_without_parent_directory},
-        {"model_and_capture_config_reject_invalid_artifacts", test_model_and_capture_config_reject_invalid_artifacts},
+        {"capture_config_rejects_invalid_values", test_capture_config_rejects_invalid_values},
         {"capture_writer_commits_image_and_metadata_together", test_capture_writer_commits_image_and_metadata_together},
     };
 

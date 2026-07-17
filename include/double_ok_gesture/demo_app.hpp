@@ -13,9 +13,8 @@ namespace double_ok_gesture {
 struct DemoArgs {
     CameraConfig camera;
     std::filesystem::path config = "configs/default.json";
-    std::optional<std::filesystem::path> model;
-    std::optional<std::filesystem::path> pose_model;
-    std::optional<std::filesystem::path> pose_manifest;
+    std::optional<std::filesystem::path> palm_model;
+    std::optional<std::filesystem::path> hand_model;
     std::optional<double> threshold;
     bool capture_gate = false;
     bool require_glasses_pose = false;
@@ -33,16 +32,15 @@ struct DemoArgs {
     bool disable_auto_capture = false;
     std::string log_level = "INFO";
     int max_frames = 0;
-    LandmarkBackend landmark_backend = LandmarkBackend::Rknn;
+    LandmarkBackend landmark_backend = LandmarkBackend::Onnx;
     std::optional<std::filesystem::path> landmarks_json;
 };
 
 DemoArgs parse_demo_args(int argc, char** argv);
 RuntimeOptions demo_runtime_options(const DemoArgs& args);
 ProcessFrameOptions demo_process_frame_options(const DemoArgs& args);
-std::optional<std::string> backend_unavailable_message(LandmarkBackend backend);
 
 int write_demo_camera_list(std::ostream& out);
-int run_demo_headless(const DemoArgs& args, std::ostream& out, std::ostream& err);
+int run_demo_headless(const DemoArgs& args, std::ostream& out);
 
 }  // namespace double_ok_gesture
