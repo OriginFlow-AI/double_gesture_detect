@@ -1,11 +1,9 @@
 #include "double_ok_gesture/demo_app.hpp"
 
-#include <iostream>
 #include <stdexcept>
 #include <string>
 
 #include "double_ok_gesture/capture_gate.hpp"
-#include "double_ok_gesture/capture_writer.hpp"
 #include "double_ok_gesture/cli.hpp"
 
 namespace double_ok_gesture {
@@ -44,10 +42,6 @@ DemoArgs parse_demo_args(int argc, char** argv) {
             args.require_glasses_pose = true;
         } else if (key == "--glasses-pose") {
             args.glasses_pose = next();
-        } else if (key == "--headless") {
-            args.headless = true;
-        } else if (key == "--status-interval") {
-            args.status_interval = parse_finite_double_argument(next(), key);
         } else if (key == "--target-fps") {
             args.target_fps = parse_finite_double_argument(next(), key);
         } else if (key == "--dashboard-width") {
@@ -73,15 +67,9 @@ DemoArgs parse_demo_args(int argc, char** argv) {
             args.landmark_backend = landmark_backend_from_string(next());
         } else if (key == "--landmarks-json") {
             args.landmarks_json = next();
-        } else if (key == "--list-cameras") {
-            args.list_cameras = true;
-            return args;
         } else {
             throw std::invalid_argument("Unknown argument: " + key);
         }
-    }
-    if (args.status_interval < 0.0) {
-        throw std::invalid_argument("--status-interval must be non-negative");
     }
     if (args.target_fps < 0.0) {
         throw std::invalid_argument("--target-fps must be non-negative");
@@ -120,72 +108,6 @@ ProcessFrameOptions demo_process_frame_options(const DemoArgs& args) {
         options.glasses_pose = load_glasses_pose(*args.glasses_pose);
     }
     return options;
-}
-
-int write_demo_camera_list(std::ostream& out) {
-    out << format_video_devices() << '\n';
-    return 0;
-}
-
-int run_demo_headless(const DemoArgs& args, std::ostream& out) {
-    RuntimeBundle runtime = make_runtime(demo_runtime_options(args));
-    CaptureWriter capture_writer(runtime.config.data_capture);
-    double last_status = 0.0;
-    int frames = 0;
-    while (true) {
-        auto frame = runtime.camera.read();
-        if (!frame) {
-            continue;
-        }
-        const auto frame_result = process_runtime_frame(runtime, *frame, demo_process_frame_options(args));
-        const auto& result = frame_result.result;
-        const auto& decision = frame_result.decision;
-        if (decision) {
-            if (auto saved = capture_writer.maybe_save(*frame, result, *decision, landmark_backend_value(args.landmark_backend))) {
-                out << "capture_saved=" << saved->string() << '\n';
-            }
-        }
-        auto snapshot = runtime.metrics.update(frame_result.started);
-        snapshot.inference_ms = frame_result.inference_ms;
-        ++frames;
-
-        const double now = monotonic_seconds();
-        if (args.status_interval == 0.0 || now - last_status >= args.status_interval) {
-            out << "hands=" << result.hands.size() << " ok_count=" << result.ok_count << " double_ok="
-                << result.double_ok << " stable=" << result.stable_double_ok;
-            if (decision) {
-                out << " gate_ready=" << decision->ready << " reason=" << gate_reason_value(decision->reason);
-            }
-            for (std::size_t index = 0; index < result.hands.size(); ++index) {
-                const HandPrediction& hand = result.hands[index];
-                out << " hand" << index << "_side=" << hand.handedness
-                    << " hand" << index << "_ok_score=" << hand.ok_score;
-                if (hand.handedness_confidence > 0.0) {
-                    out << " hand" << index << "_side_score="
-                        << hand.handedness_confidence;
-                }
-                if (hand.box) {
-                    out << " hand" << index << "_detection_score="
-                        << hand.box->detection_score;
-                }
-                if (hand.landmark_confidences) {
-                    out << " hand" << index << "_thumb_tip_visibility="
-                        << (*hand.landmark_confidences)[THUMB_TIP]
-                        << " hand" << index << "_index_tip_visibility="
-                        << (*hand.landmark_confidences)[INDEX_TIP];
-                }
-            }
-            out << " fps=" << snapshot.fps
-                << " inference_ms=" << snapshot.inference_ms
-                << " processing_ms=" << snapshot.processing_ms << '\n';
-            last_status = now;
-        }
-        if (args.max_frames > 0 && frames >= args.max_frames) {
-            break;
-        }
-    }
-    runtime.camera.close();
-    return 0;
 }
 
 }  // namespace double_ok_gesture

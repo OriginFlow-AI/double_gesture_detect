@@ -1,0 +1,4 @@
+# RKNN-Toolkit2 2.3.2 still imports APIs removed from newer releases.
+setuptools==70.0.0
+onnx==1.16.2
+rknn-toolkit2 @ https://github.com/airockchip/rknn-toolkit2/raw/master/rknn-toolkit2/packages/x86_64/rknn_toolkit2-2.3.2-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl

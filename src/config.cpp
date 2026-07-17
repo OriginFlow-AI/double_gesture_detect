@@ -157,6 +157,11 @@ void validate_runtime_config(const RuntimeConfig& config) {
         throw std::invalid_argument(
             "palm_model_path and hand_model_path must not be empty");
     }
+    if (config.rknn_hand.palm_model_path.empty() ||
+        config.rknn_hand.hand_model_path.empty()) {
+        throw std::invalid_argument(
+            "rknn_palm_model_path and rknn_hand_model_path must not be empty");
+    }
 
     config.capture_gate.validate();
     if (!std::isfinite(config.data_capture.cooldown_sec) ||
@@ -186,6 +191,8 @@ RuntimeConfig load_runtime_config(const std::filesystem::path& path) {
             "input_mirrored",
             "palm_model_path",
             "hand_model_path",
+            "rknn_palm_model_path",
+            "rknn_hand_model_path",
             "palm_detection_threshold",
             "hand_presence_threshold",
             "palm_nms_threshold",
@@ -212,6 +219,16 @@ RuntimeConfig load_runtime_config(const std::filesystem::path& path) {
         config.onnx_hand.palm_model_path, root, "", "palm_model_path");
     set_if_present(
         config.onnx_hand.hand_model_path, root, "", "hand_model_path");
+    set_if_present(
+        config.rknn_hand.palm_model_path,
+        root,
+        "",
+        "rknn_palm_model_path");
+    set_if_present(
+        config.rknn_hand.hand_model_path,
+        root,
+        "",
+        "rknn_hand_model_path");
     set_if_present(
         config.onnx_hand.palm_detection_threshold,
         root,

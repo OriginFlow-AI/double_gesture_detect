@@ -1,7 +1,6 @@
 #pragma once
 
 #include <filesystem>
-#include <iosfwd>
 #include <optional>
 #include <string>
 
@@ -19,9 +18,6 @@ struct DemoArgs {
     bool capture_gate = false;
     bool require_glasses_pose = false;
     std::optional<std::filesystem::path> glasses_pose;
-    bool headless = false;
-    bool list_cameras = false;
-    double status_interval = 1.0;
     double target_fps = 25.0;
     int dashboard_width = 1440;
     int dashboard_height = 810;
@@ -32,15 +28,12 @@ struct DemoArgs {
     bool disable_auto_capture = false;
     std::string log_level = "INFO";
     int max_frames = 0;
-    LandmarkBackend landmark_backend = LandmarkBackend::Onnx;
+    LandmarkBackend landmark_backend = default_landmark_backend();
     std::optional<std::filesystem::path> landmarks_json;
 };
 
 DemoArgs parse_demo_args(int argc, char** argv);
 RuntimeOptions demo_runtime_options(const DemoArgs& args);
 ProcessFrameOptions demo_process_frame_options(const DemoArgs& args);
-
-int write_demo_camera_list(std::ostream& out);
-int run_demo_headless(const DemoArgs& args, std::ostream& out);
 
 }  // namespace double_ok_gesture

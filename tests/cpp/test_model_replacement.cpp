@@ -10,6 +10,7 @@
 #include <opencv2/core/mat.hpp>
 
 #include "double_ok_gesture/config.hpp"
+#include "double_ok_gesture/json.hpp"
 #include "double_ok_gesture/landmark_provider.hpp"
 #include "double_ok_gesture/recognizer.hpp"
 #include "double_ok_gesture/runtime_pipeline.hpp"
@@ -36,11 +37,10 @@ std::filesystem::path source_path(const std::string& relative) {
     return std::filesystem::path(DOUBLE_OK_SOURCE_DIR) / relative;
 }
 
-void test_onnx_is_the_default_and_only_inference_backend() {
+void test_build_selects_an_available_production_backend() {
     double_ok_gesture::RuntimeOptions options;
-    EXPECT_EQ(
-        options.landmark_backend,
-        double_ok_gesture::LandmarkBackend::Onnx);
+    EXPECT_TRUE(double_ok_gesture::landmark_backend_available_in_current_build(
+        options.landmark_backend));
     EXPECT_EQ(
         double_ok_gesture::landmark_backend_from_string("onnx"),
         double_ok_gesture::LandmarkBackend::Onnx);
@@ -50,6 +50,13 @@ void test_onnx_is_the_default_and_only_inference_backend() {
         std::string("onnx"));
     EXPECT_TRUE(double_ok_gesture::landmark_backend_available_in_current_build(
         double_ok_gesture::LandmarkBackend::Onnx));
+    EXPECT_EQ(
+        double_ok_gesture::landmark_backend_from_string("rknn"),
+        double_ok_gesture::LandmarkBackend::Rknn);
+    EXPECT_EQ(
+        std::string(double_ok_gesture::landmark_backend_value(
+            double_ok_gesture::LandmarkBackend::Rknn)),
+        std::string("rknn"));
 
     bool rejected = false;
     try {
@@ -71,6 +78,14 @@ void test_default_config_selects_fp32_mediapipe_models() {
         config.onnx_hand.hand_model_path.string(),
         std::string(
             "models/opencv_zoo/handpose_estimation_mediapipe_2023feb_opencv46.onnx"));
+    EXPECT_EQ(
+        config.rknn_hand.palm_model_path.string(),
+        std::string(
+            "models/rk3588/palm_detection_mediapipe_2023feb_fp16.rknn"));
+    EXPECT_EQ(
+        config.rknn_hand.hand_model_path.string(),
+        std::string(
+            "models/rk3588/handpose_estimation_mediapipe_2023feb_fp16.rknn"));
     EXPECT_TRUE(config.onnx_hand.hand_presence_threshold >= 0.8);
     EXPECT_TRUE(!config.onnx_hand.input_mirrored);
 }
@@ -97,6 +112,25 @@ void test_models_load_with_opencv_and_black_frame_has_no_hands() {
     EXPECT_TRUE(provider.detect(black).empty());
 }
 
+void test_rk3588_fp16_artifacts_have_a_manifest() {
+    const auto palm = source_path(
+        "models/rk3588/palm_detection_mediapipe_2023feb_fp16.rknn");
+    const auto hand = source_path(
+        "models/rk3588/handpose_estimation_mediapipe_2023feb_fp16.rknn");
+    EXPECT_TRUE(std::filesystem::file_size(palm) > 2'000'000U);
+    EXPECT_TRUE(std::filesystem::file_size(hand) > 2'000'000U);
+
+    const auto manifest = double_ok_gesture::load_json(
+        source_path("models/rk3588/manifest.json"));
+    EXPECT_EQ(
+        manifest.get("schema")->as_string(),
+        std::string("double_ok_rknn_models_v1"));
+    EXPECT_EQ(
+        manifest.get("target_platform")->as_string(),
+        std::string("rk3588"));
+    EXPECT_EQ(manifest.get("models")->as_array().size(), 2U);
+}
+
 void test_recognizer_preserves_model_metadata() {
     double_ok_gesture::DetectedHand detected;
     detected.handedness = "Left";
@@ -117,12 +151,14 @@ void test_recognizer_preserves_model_metadata() {
 
 int main() {
     const std::vector<std::pair<std::string, std::function<void()>>> tests = {
-        {"onnx_is_the_default_and_only_inference_backend",
-         test_onnx_is_the_default_and_only_inference_backend},
+        {"build_selects_an_available_production_backend",
+         test_build_selects_an_available_production_backend},
         {"default_config_selects_fp32_mediapipe_models",
          test_default_config_selects_fp32_mediapipe_models},
         {"models_load_with_opencv_and_black_frame_has_no_hands",
          test_models_load_with_opencv_and_black_frame_has_no_hands},
+        {"rk3588_fp16_artifacts_have_a_manifest",
+         test_rk3588_fp16_artifacts_have_a_manifest},
         {"recognizer_preserves_model_metadata",
          test_recognizer_preserves_model_metadata},
     };

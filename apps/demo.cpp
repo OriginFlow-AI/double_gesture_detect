@@ -28,13 +28,6 @@ double_ok_gesture::QtDashboardOptions dashboard_options_from_demo_args(const dou
 int main(int argc, char** argv) {
     try {
         const auto args = double_ok_gesture::parse_demo_args(argc, argv);
-        if (args.list_cameras) {
-            return double_ok_gesture::write_demo_camera_list(std::cout);
-        }
-        if (args.headless) {
-            return double_ok_gesture::run_demo_headless(args, std::cout);
-        }
-
         QApplication application(argc, argv);
         double_ok_gesture::RuntimeBundle runtime =
             double_ok_gesture::make_runtime(double_ok_gesture::demo_runtime_options(args));

@@ -19,7 +19,7 @@ struct QtDashboardOptions {
     double target_fps = 25.0;
     bool capture_gate = false;
     std::optional<std::filesystem::path> glasses_pose;
-    LandmarkBackend landmark_backend = LandmarkBackend::Onnx;
+    LandmarkBackend landmark_backend = default_landmark_backend();
     std::optional<std::filesystem::path> palm_model_path;
     std::optional<std::filesystem::path> hand_model_path;
 };

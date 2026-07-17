@@ -3,16 +3,27 @@
 #include <opencv2/dnn.hpp>
 #include <opencv2/imgproc.hpp>
 
+#ifdef DOUBLE_OK_HAS_RKNN
+#include <rknn_api.h>
+#endif
+
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstdint>
+#include <cstring>
 #include <filesystem>
+#include <fstream>
 #include <limits>
+#include <memory>
 #include <numeric>
+#include <sstream>
 #include <stdexcept>
 #include <string>
 #include <utility>
 #include <vector>
+
+#include "double_ok_gesture/runtime.hpp"
 
 namespace double_ok_gesture {
 namespace {
@@ -55,24 +66,33 @@ void require_probability(double value, const char* name) {
     }
 }
 
-void require_onnx_model(
+void require_model(
     const std::filesystem::path& path,
-    const char* name) {
-    if (path.empty() || path.extension() != ".onnx") {
+    const std::string& name,
+    const char* extension) {
+    if (path.empty() || path.extension() != extension) {
         throw std::invalid_argument(
-            std::string(name) + " must point to an .onnx file");
+            name + " must point to a " + extension + " file");
     }
     if (!std::filesystem::is_regular_file(path) ||
         std::filesystem::file_size(path) == 0) {
         throw std::runtime_error(
-            std::string(name) + " not found or empty: " + path.string());
+            name + " not found or empty: " + path.string());
     }
 }
 
 MediaPipeOnnxPipelineConfig validate_config(
-    MediaPipeOnnxPipelineConfig config) {
-    require_onnx_model(config.palm_model, "palm ONNX model");
-    require_onnx_model(config.hand_model, "hand landmark ONNX model");
+    MediaPipeOnnxPipelineConfig config,
+    const char* extension,
+    const char* backend) {
+    require_model(
+        config.palm_model,
+        std::string("palm ") + backend + " model",
+        extension);
+    require_model(
+        config.hand_model,
+        std::string("hand landmark ") + backend + " model",
+        extension);
     if (config.max_num_hands < 1 || config.max_num_hands > 2) {
         throw std::invalid_argument("max_num_hands must be 1 or 2");
     }
@@ -82,24 +102,6 @@ MediaPipeOnnxPipelineConfig validate_config(
         config.hand_presence_threshold, "hand_presence_threshold");
     require_probability(config.palm_nms_threshold, "palm_nms_threshold");
     return config;
-}
-
-cv::dnn::Net load_network(
-    const std::filesystem::path& path,
-    const char* name) {
-    try {
-        cv::dnn::Net net = cv::dnn::readNetFromONNX(path.string());
-        if (net.empty()) {
-            throw std::runtime_error("OpenCV DNN returned an empty network");
-        }
-        net.setPreferableBackend(cv::dnn::DNN_BACKEND_OPENCV);
-        net.setPreferableTarget(cv::dnn::DNN_TARGET_CPU);
-        return net;
-    } catch (const cv::Exception& error) {
-        throw std::runtime_error(
-            std::string("Unable to load ") + name + " '" + path.string() +
-            "' with OpenCV DNN: " + error.what());
-    }
 }
 
 cv::Mat nhwc_float_input(const cv::Mat& rgb) {
@@ -113,20 +115,308 @@ cv::Mat nhwc_float_input(const cv::Mat& rgb) {
     return values.reshape(1, 4, shape);
 }
 
-std::vector<cv::Mat> forward(
-    cv::dnn::Net& net,
-    const std::vector<cv::String>& names,
-    const cv::Mat& input,
-    const std::string& label) {
-    try {
-        net.setInput(input);
-        std::vector<cv::Mat> outputs;
-        net.forward(outputs, names);
-        return outputs;
-    } catch (const cv::Exception& error) {
-        throw std::runtime_error(label + " ONNX inference failed: " + error.what());
+class NetworkRunner {
+public:
+    virtual ~NetworkRunner() = default;
+    virtual std::vector<cv::Mat> forward(const cv::Mat& rgb_u8) = 0;
+};
+
+class OpenCvNetworkRunner final : public NetworkRunner {
+public:
+    OpenCvNetworkRunner(
+        std::filesystem::path path,
+        std::vector<cv::String> output_names,
+        std::string label)
+        : output_names_(std::move(output_names)),
+          label_(std::move(label)) {
+        try {
+            net_ = cv::dnn::readNetFromONNX(path.string());
+            if (net_.empty()) {
+                throw std::runtime_error(
+                    "OpenCV DNN returned an empty network");
+            }
+            net_.setPreferableBackend(cv::dnn::DNN_BACKEND_OPENCV);
+            net_.setPreferableTarget(cv::dnn::DNN_TARGET_CPU);
+        } catch (const cv::Exception& error) {
+            throw std::runtime_error(
+                "Unable to load " + label_ + " '" + path.string() +
+                "' with OpenCV DNN: " + error.what());
+        }
+    }
+
+    std::vector<cv::Mat> forward(const cv::Mat& rgb_u8) override {
+        try {
+            net_.setInput(nhwc_float_input(rgb_u8));
+            std::vector<cv::Mat> outputs;
+            net_.forward(outputs, output_names_);
+            return outputs;
+        } catch (const cv::Exception& error) {
+            throw std::runtime_error(
+                label_ + " ONNX inference failed: " + error.what());
+        }
+    }
+
+private:
+    cv::dnn::Net net_;
+    std::vector<cv::String> output_names_;
+    std::string label_;
+};
+
+#ifdef DOUBLE_OK_HAS_RKNN
+
+std::vector<unsigned char> load_binary_file(
+    const std::filesystem::path& path) {
+    std::ifstream input(path, std::ios::binary | std::ios::ate);
+    if (!input) {
+        throw std::runtime_error("Unable to open RKNN model: " + path.string());
+    }
+    const std::streamsize size = input.tellg();
+    if (size <= 0 ||
+        static_cast<unsigned long long>(size) >
+            std::numeric_limits<std::uint32_t>::max()) {
+        throw std::runtime_error(
+            "RKNN model has an invalid file size: " + path.string());
+    }
+    input.seekg(0, std::ios::beg);
+    std::vector<unsigned char> data(static_cast<std::size_t>(size));
+    if (!input.read(
+            reinterpret_cast<char*>(data.data()), size)) {
+        throw std::runtime_error("Unable to read RKNN model: " + path.string());
+    }
+    return data;
+}
+
+void require_rknn_success(int status, const std::string& operation) {
+    if (status != RKNN_SUCC) {
+        throw std::runtime_error(
+            operation + " failed with RKNN status " +
+            std::to_string(status));
     }
 }
+
+class RknnNetworkRunner final : public NetworkRunner {
+public:
+    RknnNetworkRunner(
+        std::filesystem::path path,
+        int input_size,
+        std::vector<std::string> output_names,
+        std::vector<std::size_t> output_element_counts,
+        std::string label)
+        : model_data_(load_binary_file(path)),
+          input_size_(input_size),
+          label_(std::move(label)) {
+        if (output_names.size() != output_element_counts.size()) {
+            throw std::logic_error("invalid RKNN output contract");
+        }
+        require_rknn_success(
+            rknn_init(
+                &context_,
+                model_data_.data(),
+                static_cast<std::uint32_t>(model_data_.size()),
+                0,
+                nullptr),
+            "rknn_init(" + label_ + ")");
+        initialized_ = true;
+        try {
+            require_rknn_success(
+                rknn_set_core_mask(context_, RKNN_NPU_CORE_AUTO),
+                "rknn_set_core_mask(" + label_ + ")");
+            initialize_contract(
+                std::move(output_names),
+                std::move(output_element_counts));
+        } catch (...) {
+            rknn_destroy(context_);
+            initialized_ = false;
+            throw;
+        }
+    }
+
+    ~RknnNetworkRunner() override {
+        if (initialized_) {
+            rknn_destroy(context_);
+        }
+    }
+
+    std::vector<cv::Mat> forward(const cv::Mat& rgb_u8) override {
+        if (rgb_u8.empty() || rgb_u8.type() != CV_8UC3 ||
+            rgb_u8.rows != input_size_ || rgb_u8.cols != input_size_ ||
+            !rgb_u8.isContinuous()) {
+            throw std::invalid_argument(
+                label_ + " RKNN input must be a continuous square CV_8UC3 RGB image");
+        }
+        rknn_input input{};
+        input.index = 0;
+        input.buf = const_cast<unsigned char*>(rgb_u8.ptr<unsigned char>());
+        input.size = static_cast<std::uint32_t>(rgb_u8.total() * rgb_u8.elemSize());
+        input.pass_through = 0;
+        input.type = RKNN_TENSOR_UINT8;
+        input.fmt = RKNN_TENSOR_NHWC;
+        require_rknn_success(
+            rknn_inputs_set(context_, 1, &input),
+            "rknn_inputs_set(" + label_ + ")");
+        require_rknn_success(
+            rknn_run(context_, nullptr),
+            "rknn_run(" + label_ + ")");
+
+        std::vector<rknn_output> raw_outputs(output_indices_.size());
+        for (std::size_t index = 0; index < raw_outputs.size(); ++index) {
+            raw_outputs[index].index = output_indices_[index];
+            raw_outputs[index].want_float = 1;
+            raw_outputs[index].is_prealloc = 0;
+        }
+        require_rknn_success(
+            rknn_outputs_get(
+                context_,
+                static_cast<std::uint32_t>(raw_outputs.size()),
+                raw_outputs.data(),
+                nullptr),
+            "rknn_outputs_get(" + label_ + ")");
+        bool outputs_released = false;
+        try {
+            std::vector<cv::Mat> outputs;
+            outputs.reserve(raw_outputs.size());
+            for (std::size_t index = 0; index < raw_outputs.size(); ++index) {
+                if (!raw_outputs[index].buf) {
+                    throw std::runtime_error(
+                        label_ + " RKNN returned a null output buffer");
+                }
+                const std::size_t required_bytes =
+                    output_element_counts_[index] * sizeof(float);
+                if (raw_outputs[index].size < required_bytes) {
+                    throw std::runtime_error(
+                        label_ + " RKNN returned a truncated output buffer");
+                }
+                cv::Mat output(
+                    1,
+                    static_cast<int>(output_element_counts_[index]),
+                    CV_32F);
+                std::memcpy(
+                    output.ptr<float>(),
+                    raw_outputs[index].buf,
+                    required_bytes);
+                outputs.push_back(std::move(output));
+            }
+            const int release_status = rknn_outputs_release(
+                context_,
+                static_cast<std::uint32_t>(raw_outputs.size()),
+                raw_outputs.data());
+            outputs_released = true;
+            require_rknn_success(
+                release_status,
+                "rknn_outputs_release(" + label_ + ")");
+            return outputs;
+        } catch (...) {
+            if (!outputs_released) {
+                (void)rknn_outputs_release(
+                    context_,
+                    static_cast<std::uint32_t>(raw_outputs.size()),
+                    raw_outputs.data());
+            }
+            throw;
+        }
+    }
+
+private:
+    void initialize_contract(
+        std::vector<std::string> expected_names,
+        std::vector<std::size_t> expected_counts) {
+        rknn_input_output_num io_count{};
+        require_rknn_success(
+            rknn_query(
+                context_, RKNN_QUERY_IN_OUT_NUM, &io_count, sizeof(io_count)),
+            "rknn_query(io count, " + label_ + ")");
+        if (io_count.n_input != 1 ||
+            io_count.n_output != expected_names.size()) {
+            throw std::runtime_error(
+                label_ + " RKNN model has an unexpected input/output count");
+        }
+
+        rknn_tensor_attr input_attr{};
+        input_attr.index = 0;
+        require_rknn_success(
+            rknn_query(
+                context_,
+                RKNN_QUERY_INPUT_ATTR,
+                &input_attr,
+                sizeof(input_attr)),
+            "rknn_query(input, " + label_ + ")");
+        const std::size_t expected_input_elements =
+            static_cast<std::size_t>(input_size_) * input_size_ * 3;
+        const bool expected_nchw =
+            input_attr.fmt == RKNN_TENSOR_NCHW && input_attr.n_dims == 4 &&
+            input_attr.dims[0] == 1 && input_attr.dims[1] == 3 &&
+            input_attr.dims[2] == static_cast<std::uint32_t>(input_size_) &&
+            input_attr.dims[3] == static_cast<std::uint32_t>(input_size_);
+        const bool expected_nhwc =
+            input_attr.fmt == RKNN_TENSOR_NHWC && input_attr.n_dims == 4 &&
+            input_attr.dims[0] == 1 &&
+            input_attr.dims[1] == static_cast<std::uint32_t>(input_size_) &&
+            input_attr.dims[2] == static_cast<std::uint32_t>(input_size_) &&
+            input_attr.dims[3] == 3;
+        if (std::string(input_attr.name) != "input_1" ||
+            input_attr.n_elems != expected_input_elements ||
+            (!expected_nchw && !expected_nhwc)) {
+            throw std::runtime_error(
+                label_ + " RKNN model has an unexpected input shape");
+        }
+
+        std::vector<rknn_tensor_attr> attributes(io_count.n_output);
+        for (std::uint32_t index = 0; index < io_count.n_output; ++index) {
+            attributes[index].index = index;
+            require_rknn_success(
+                rknn_query(
+                    context_,
+                    RKNN_QUERY_OUTPUT_ATTR,
+                    &attributes[index],
+                    sizeof(attributes[index])),
+                "rknn_query(output, " + label_ + ")");
+        }
+
+        for (std::size_t expected = 0; expected < expected_names.size(); ++expected) {
+            const auto found = std::find_if(
+                attributes.begin(),
+                attributes.end(),
+                [&](const rknn_tensor_attr& attribute) {
+                    return expected_names[expected] == attribute.name;
+                });
+            if (found == attributes.end()) {
+                throw std::runtime_error(
+                    label_ + " RKNN model is missing output '" +
+                    expected_names[expected] + "'");
+            }
+            if (found->n_elems != expected_counts[expected]) {
+                throw std::runtime_error(
+                    label_ + " RKNN output '" + expected_names[expected] +
+                    "' has an unexpected element count");
+            }
+            output_indices_.push_back(found->index);
+            output_element_counts_.push_back(expected_counts[expected]);
+        }
+
+        rknn_sdk_version version{};
+        require_rknn_success(
+            rknn_query(
+                context_,
+                RKNN_QUERY_SDK_VERSION,
+                &version,
+                sizeof(version)),
+            "rknn_query(version, " + label_ + ")");
+        log_message(
+            LogLevel::Info,
+            label_ + " RKNN ready: api=" + version.api_version +
+                ", driver=" + version.drv_version);
+    }
+
+    std::vector<unsigned char> model_data_;
+    int input_size_ = 0;
+    std::string label_;
+    rknn_context context_{};
+    bool initialized_ = false;
+    std::vector<std::uint32_t> output_indices_;
+    std::vector<std::size_t> output_element_counts_;
+};
+
+#endif
 
 std::vector<cv::Point2d> make_palm_anchors() {
     std::vector<cv::Point2d> anchors;
@@ -206,7 +496,7 @@ const cv::Mat& palm_regression_output(
         }
     }
     throw std::runtime_error(
-        "palm ONNX model must output [1,2016,18] regressions");
+        "palm model must output [1,2016,18] regressions");
 }
 
 const cv::Mat& palm_score_output(const std::vector<cv::Mat>& outputs) {
@@ -216,12 +506,11 @@ const cv::Mat& palm_score_output(const std::vector<cv::Mat>& outputs) {
         }
     }
     throw std::runtime_error(
-        "palm ONNX model must output [1,2016,1] scores");
+        "palm model must output [1,2016,1] scores");
 }
 
 std::vector<PalmDetection> detect_palms(
-    cv::dnn::Net& net,
-    const std::vector<cv::String>& output_names,
+    NetworkRunner& runner,
     const std::vector<cv::Point2d>& anchors,
     const cv::Mat& frame_bgr,
     const MediaPipeOnnxPipelineConfig& config) {
@@ -246,12 +535,11 @@ std::vector<PalmDetection> detect_palms(
         cv::BORDER_CONSTANT, cv::Scalar(0, 0, 0));
     cv::cvtColor(square, square, cv::COLOR_BGR2RGB);
 
-    const std::vector<cv::Mat> outputs = forward(
-        net, output_names, nhwc_float_input(square), "palm detection");
+    const std::vector<cv::Mat> outputs = runner.forward(square);
     cv::Mat regression = palm_regression_output(outputs);
     cv::Mat scores = palm_score_output(outputs);
     if (regression.depth() != CV_32F || scores.depth() != CV_32F) {
-        throw std::runtime_error("palm ONNX outputs must be float32");
+        throw std::runtime_error("palm model outputs must be float32");
     }
     if (!regression.isContinuous()) {
         regression = regression.clone();
@@ -426,7 +714,7 @@ HandInputTransform prepare_hand_input(
         second.image, resized, cv::Size(kHandInputSize, kHandInputSize), 0.0,
         0.0, cv::INTER_AREA);
     return {
-        nhwc_float_input(resized),
+        resized,
         second.box,
         angle,
         rotation,
@@ -440,26 +728,24 @@ void validate_hand_outputs(const std::vector<cv::Mat>& outputs) {
         outputs[1].total() != 1 || outputs[2].total() != 1 ||
         outputs[3].total() != kHandLandmarkValueCount) {
         throw std::runtime_error(
-            "hand landmark ONNX model must output [63], [1], [1], [63]");
+            "hand landmark model must output [63], [1], [1], [63]");
     }
     if (std::any_of(
             outputs.begin(), outputs.end(),
             [](const cv::Mat& output) {
                 return output.empty() || output.depth() != CV_32F;
             })) {
-        throw std::runtime_error("hand landmark ONNX outputs must be float32");
+        throw std::runtime_error("hand landmark outputs must be float32");
     }
 }
 
 std::optional<DetectedHand> estimate_hand(
-    cv::dnn::Net& net,
-    const std::vector<cv::String>& output_names,
+    NetworkRunner& runner,
     const cv::Mat& frame_bgr,
     const PalmDetection& palm,
     const MediaPipeOnnxPipelineConfig& config) {
     const HandInputTransform transform = prepare_hand_input(frame_bgr, palm);
-    std::vector<cv::Mat> outputs = forward(
-        net, output_names, transform.input, "hand landmark");
+    std::vector<cv::Mat> outputs = runner.forward(transform.input);
     validate_hand_outputs(outputs);
     for (cv::Mat& output : outputs) {
         if (!output.isContinuous()) {
@@ -473,7 +759,7 @@ std::optional<DetectedHand> estimate_hand(
     }
     const double handedness_value = outputs[2].ptr<float>()[0];
     if (!std::isfinite(handedness_value)) {
-        throw std::runtime_error("handedness ONNX output is not finite");
+        throw std::runtime_error("handedness model output is not finite");
     }
 
     const cv::Point2d palm_size =
@@ -591,43 +877,46 @@ std::optional<DetectedHand> estimate_hand(
 
 }  // namespace
 
-struct MediaPipeOnnxHandLandmarkProvider::Impl {
-    explicit Impl(MediaPipeOnnxPipelineConfig pipeline_config)
-        : config(validate_config(std::move(pipeline_config))),
-          palm_net(load_network(config.palm_model, "palm ONNX model")),
-          hand_net(load_network(config.hand_model, "hand landmark ONNX model")),
-          palm_output_names(palm_net.getUnconnectedOutLayersNames()),
-          hand_output_names(hand_net.getUnconnectedOutLayersNames()),
+class MediaPipePipeline {
+public:
+    MediaPipePipeline(
+        MediaPipeOnnxPipelineConfig pipeline_config,
+        std::unique_ptr<NetworkRunner> palm_runner,
+        std::unique_ptr<NetworkRunner> hand_runner)
+        : config(std::move(pipeline_config)),
+          palm_runner(std::move(palm_runner)),
+          hand_runner(std::move(hand_runner)),
           anchors(make_palm_anchors()) {
         const cv::Mat palm_probe(
-            4, std::array<int, 4>{1, kPalmInputSize, kPalmInputSize, 3}.data(),
-            CV_32F, cv::Scalar(0));
-        const auto palm_outputs = forward(
-            palm_net, palm_output_names, palm_probe, "palm model probe");
+            kPalmInputSize,
+            kPalmInputSize,
+            CV_8UC3,
+            cv::Scalar(0, 0, 0));
+        const auto palm_outputs = this->palm_runner->forward(palm_probe);
         (void)palm_regression_output(palm_outputs);
         (void)palm_score_output(palm_outputs);
 
         const cv::Mat hand_probe(
-            4, std::array<int, 4>{1, kHandInputSize, kHandInputSize, 3}.data(),
-            CV_32F, cv::Scalar(0));
-        validate_hand_outputs(forward(
-            hand_net, hand_output_names, hand_probe, "hand model probe"));
+            kHandInputSize,
+            kHandInputSize,
+            CV_8UC3,
+            cv::Scalar(0, 0, 0));
+        validate_hand_outputs(this->hand_runner->forward(hand_probe));
     }
 
     std::vector<DetectedHand> detect(const cv::Mat& frame_bgr) {
         if (frame_bgr.empty() || frame_bgr.type() != CV_8UC3) {
             throw std::invalid_argument(
-                "ONNX provider requires a non-empty CV_8UC3 BGR frame");
+                "MediaPipe provider requires a non-empty CV_8UC3 BGR frame");
         }
         const auto palms = detect_palms(
-            palm_net, palm_output_names, anchors, frame_bgr, config);
+            *palm_runner, anchors, frame_bgr, config);
         std::vector<DetectedHand> hands;
         hands.reserve(palms.size());
         for (const PalmDetection& palm : palms) {
             try {
                 if (auto hand = estimate_hand(
-                        hand_net, hand_output_names, frame_bgr, palm,
-                        config)) {
+                        *hand_runner, frame_bgr, palm, config)) {
                     hands.push_back(std::move(*hand));
                 }
             } catch (const InvalidPalmCrop&) {
@@ -646,11 +935,29 @@ struct MediaPipeOnnxHandLandmarkProvider::Impl {
     }
 
     MediaPipeOnnxPipelineConfig config;
-    cv::dnn::Net palm_net;
-    cv::dnn::Net hand_net;
-    std::vector<cv::String> palm_output_names;
-    std::vector<cv::String> hand_output_names;
+    std::unique_ptr<NetworkRunner> palm_runner;
+    std::unique_ptr<NetworkRunner> hand_runner;
     std::vector<cv::Point2d> anchors;
+};
+
+struct MediaPipeOnnxHandLandmarkProvider::Impl {
+    explicit Impl(MediaPipeOnnxPipelineConfig pipeline_config)
+        : config(validate_config(
+              std::move(pipeline_config), ".onnx", "ONNX")),
+          pipeline(
+              config,
+              std::make_unique<OpenCvNetworkRunner>(
+                  config.palm_model,
+                  std::vector<cv::String>{"Identity", "Identity_1"},
+                  "palm detection"),
+              std::make_unique<OpenCvNetworkRunner>(
+                  config.hand_model,
+                  std::vector<cv::String>{
+                      "Identity", "Identity_1", "Identity_2", "Identity_3"},
+                  "hand landmark")) {}
+
+    MediaPipeOnnxPipelineConfig config;
+    MediaPipePipeline pipeline;
 };
 
 MediaPipeOnnxHandLandmarkProvider::MediaPipeOnnxHandLandmarkProvider(
@@ -665,7 +972,78 @@ LandmarkProviderInfo MediaPipeOnnxHandLandmarkProvider::info() const {
 
 std::vector<DetectedHand> MediaPipeOnnxHandLandmarkProvider::detect(
     const cv::Mat& frame_bgr) {
-    return impl_->detect(frame_bgr);
+    return impl_->pipeline.detect(frame_bgr);
+}
+
+#ifdef DOUBLE_OK_HAS_RKNN
+
+struct MediaPipeRknnHandLandmarkProvider::Impl {
+    explicit Impl(MediaPipeRknnPipelineConfig pipeline_config)
+        : config(validate_config(
+              std::move(pipeline_config), ".rknn", "RKNN")),
+          pipeline(
+              config,
+              std::make_unique<RknnNetworkRunner>(
+                  config.palm_model,
+                  kPalmInputSize,
+                  std::vector<std::string>{"Identity", "Identity_1"},
+                  std::vector<std::size_t>{
+                      kPalmAnchorCount * kPalmValueCount,
+                      kPalmAnchorCount},
+                  "palm detection"),
+              std::make_unique<RknnNetworkRunner>(
+                  config.hand_model,
+                  kHandInputSize,
+                  std::vector<std::string>{
+                      "Identity", "Identity_1", "Identity_2", "Identity_3"},
+                  std::vector<std::size_t>{
+                      kHandLandmarkValueCount,
+                      1,
+                      1,
+                      kHandLandmarkValueCount},
+                  "hand landmark")) {}
+
+    MediaPipeRknnPipelineConfig config;
+    MediaPipePipeline pipeline;
+};
+
+#else
+
+struct MediaPipeRknnHandLandmarkProvider::Impl {};
+
+#endif
+
+MediaPipeRknnHandLandmarkProvider::MediaPipeRknnHandLandmarkProvider(
+    MediaPipeRknnPipelineConfig config)
+#ifdef DOUBLE_OK_HAS_RKNN
+    : impl_(std::make_unique<Impl>(std::move(config))) {}
+#else
+    : impl_(nullptr) {
+    (void)config;
+    throw std::runtime_error(
+        "RKNN backend is not available in this build; rebuild with "
+        "DOUBLE_OK_REQUIRE_RKNN=ON");
+}
+#endif
+
+MediaPipeRknnHandLandmarkProvider::~MediaPipeRknnHandLandmarkProvider() = default;
+
+LandmarkProviderInfo MediaPipeRknnHandLandmarkProvider::info() const {
+#ifdef DOUBLE_OK_HAS_RKNN
+    return {"mediapipe-rknn-fp16-npu", true, false};
+#else
+    return {"mediapipe-rknn-fp16-npu", false, false};
+#endif
+}
+
+std::vector<DetectedHand> MediaPipeRknnHandLandmarkProvider::detect(
+    const cv::Mat& frame_bgr) {
+#ifdef DOUBLE_OK_HAS_RKNN
+    return impl_->pipeline.detect(frame_bgr);
+#else
+    (void)frame_bgr;
+    throw std::runtime_error("RKNN backend is unavailable");
+#endif
 }
 
 }  // namespace double_ok_gesture

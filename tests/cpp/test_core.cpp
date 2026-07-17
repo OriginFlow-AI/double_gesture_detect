@@ -382,6 +382,8 @@ void test_runtime_metrics() {
 }
 
 void test_landmark_backend_parser() {
+    EXPECT_EQ(double_ok_gesture::landmark_backend_from_string("rknn"), double_ok_gesture::LandmarkBackend::Rknn);
+    EXPECT_EQ(double_ok_gesture::landmark_backend_from_string("mediapipe-rknn"), double_ok_gesture::LandmarkBackend::Rknn);
     EXPECT_EQ(double_ok_gesture::landmark_backend_from_string("onnx"), double_ok_gesture::LandmarkBackend::Onnx);
     EXPECT_EQ(double_ok_gesture::landmark_backend_from_string("mediapipe-onnx"), double_ok_gesture::LandmarkBackend::Onnx);
     EXPECT_EQ(
@@ -391,8 +393,13 @@ void test_landmark_backend_parser() {
     EXPECT_TRUE(double_ok_gesture::landmark_backend_available_in_current_build(double_ok_gesture::LandmarkBackend::LandmarksJson));
     EXPECT_TRUE(double_ok_gesture::landmark_backend_available_in_current_build(double_ok_gesture::LandmarkBackend::Onnx));
     EXPECT_EQ(
+        std::string(double_ok_gesture::landmark_backend_value(double_ok_gesture::LandmarkBackend::Rknn)),
+        std::string("rknn"));
+    EXPECT_EQ(
         std::string(double_ok_gesture::landmark_backend_value(double_ok_gesture::LandmarkBackend::Onnx)),
         std::string("onnx"));
+    EXPECT_TRUE(double_ok_gesture::landmark_backend_available_in_current_build(
+        double_ok_gesture::default_landmark_backend()));
 
     bool threw = false;
     try {
@@ -428,9 +435,6 @@ void test_demo_args_parse_and_map_options() {
         "--require-glasses-pose",
         "--glasses-pose",
         "/tmp/pose.json",
-        "--headless",
-        "--status-interval",
-        "0",
         "--target-fps",
         "15",
         "--dashboard-width",
@@ -468,8 +472,6 @@ void test_demo_args_parse_and_map_options() {
     EXPECT_TRUE(args.capture_gate);
     EXPECT_TRUE(args.require_glasses_pose);
     EXPECT_TRUE(args.glasses_pose.has_value());
-    EXPECT_TRUE(args.headless);
-    EXPECT_NEAR(args.status_interval, 0.0, 1e-12);
     EXPECT_NEAR(args.target_fps, 15.0, 1e-12);
     EXPECT_EQ(args.dashboard_width, 1200);
     EXPECT_EQ(args.dashboard_height, 720);
@@ -502,11 +504,6 @@ void test_demo_args_parse_and_map_options() {
     }));
     EXPECT_TRUE(frame_options.capture_gate);
     EXPECT_FALSE(frame_options.glasses_pose.has_value());
-}
-
-void test_demo_args_list_cameras_stops_parsing() {
-    const auto args = parse_demo_args_for_test({"double-ok-demo", "--list-cameras", "--unknown"});
-    EXPECT_TRUE(args.list_cameras);
 }
 
 void test_demo_args_reject_missing_value() {
@@ -595,7 +592,6 @@ int main() {
         {"runtime_metrics", test_runtime_metrics},
         {"landmark_backend_parser", test_landmark_backend_parser},
         {"demo_args_parse_and_map_options", test_demo_args_parse_and_map_options},
-        {"demo_args_list_cameras_stops_parsing", test_demo_args_list_cameras_stops_parsing},
         {"demo_args_reject_missing_value", test_demo_args_reject_missing_value},
         {"null_landmark_provider_returns_empty", test_null_landmark_provider_returns_empty},
         {"json_landmark_provider_reads_real_21_point_hands", test_json_landmark_provider_reads_real_21_point_hands},

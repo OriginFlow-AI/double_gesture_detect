@@ -14,4 +14,6 @@ models/*
 !models/README.md
 !models/opencv_zoo/
 !models/opencv_zoo/**
+!models/rk3588/
+!models/rk3588/**
 reports/live/

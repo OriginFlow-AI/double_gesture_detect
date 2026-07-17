@@ -1,23 +1,12 @@
 # Recognition Accuracy and Diagnostics
 
-当前默认模型是 OpenCV Zoo MediaPipe FP32 双模型。掌心网络先给出旋转方向，手部网络
-再输出 21 点、手存在置信度和手别；FP32 版本用于效果优先，未采用会明显损失精度的
-量化版本。
+正式运行使用 MediaPipe FP16 RKNN 双模型。掌心网络先给出旋转方向，手部网络再输出
+21 点、手存在置信度和手别；OpenCV Zoo FP32 ONNX 仅用于桌面对照验证。没有采用容易
+损失关键点精度的 INT8 版本。
 
 OK 分数仍是 21 点几何匹配分，不是经过目标场景校准的概率。规则同时检查拇食指
 接近、食指弯曲和其余三指展开，并使用原图像素等距坐标，避免宽高分别归一化带来的
 形变。
-
-逐帧诊断：
-
-```bash
-build/double-ok-headless \
-  --camera /dev/video6 \
-  --disable-auto-capture \
-  --status-interval 0 \
-  --max-frames 100 \
-  --log-level INFO
-```
 
 自动采集的 `double_ok=true` 是运行时预测，不是人工真值。正式验收应按人员和会话
 隔离数据，覆盖标准 OK、张掌、拳头、V、点赞、遮挡、裁边、旋转和快速运动，分别

@@ -1,66 +1,55 @@
 # Double OK Gesture Detect
 
-这是一个 C++20 / OpenCV / Qt 的双手 OK 实时识别项目。当前主链路只使用 ONNX：
+这是一个 C++20 / OpenCV / Qt 的双手 OK 实时识别项目。RK3588 部署以 NPU 为主：
 
 ```text
 相机 BGR 帧
--> MediaPipe FP32 ONNX 掌心检测
+-> MediaPipe FP16 RKNN 掌心检测（RK3588 NPU）
 -> 旋转手部 ROI
--> MediaPipe FP32 ONNX 21 点、手别和存在置信度
+-> MediaPipe FP16 RKNN 21 点、手别和存在置信度（RK3588 NPU）
 -> OK 几何评分与时序稳定
 -> 采集门控
--> Qt 界面或 Headless 输出
+-> Qt 实时界面
 ```
 
 ## 默认模型
 
-效果优先版本是 OpenCV Zoo 的 MediaPipe FP32 双模型：
+RK3588 默认使用由官方 FP32 ONNX 转换得到的非量化 FP16 双模型：
+
+- `models/rk3588/palm_detection_mediapipe_2023feb_fp16.rknn`
+- `models/rk3588/handpose_estimation_mediapipe_2023feb_fp16.rknn`
+
+桌面开发和对照测试保留 OpenCV DNN FP32 双模型：
 
 - `models/opencv_zoo/palm_detection_mediapipe_2023feb.onnx`
 - `models/opencv_zoo/handpose_estimation_mediapipe_2023feb_opencv46.onnx`
 
-两个文件必须一起使用。第二个文件是与官方 FP32 计算等价的 OpenCV 4.6 兼容导出。
+每种后端的两个文件必须成对使用。OpenCV 的第二个文件是与官方 FP32 计算等价的
+OpenCV 4.6 兼容导出。
 来源、许可证和 SHA-256 见 [模型说明](models/opencv_zoo/README.md)。
 
-## 运行
+## 唯一运行方式
 
-先检查相机节点：
+在 PC 或 RK3588 板端都执行同一个命令：
 
 ```bash
-scripts/check_camera.sh /dev/video6
+scripts/run_demo.sh
 ```
 
-运行 Qt 界面；ONNX 是默认后端和默认模型，无需再传模型参数：
+默认相机是 `/dev/video6`。如果设备号不同，只传一个相机参数：
 
 ```bash
-scripts/run_demo.sh /dev/video6 \
-  --disable-auto-capture \
-  --target-fps 15 \
-  --log-level INFO
+scripts/run_demo.sh /dev/video0
 ```
 
-按 `Q` 或 `Esc` 退出，按 `S` 保存界面截图。需要门控通过后自动保存时，去掉
-`--disable-auto-capture`。
+脚本自动完成 CMake 配置、编译和启动：x86_64 PC 使用 ONNX CPU 进行开发验证；
+RK3588（AArch64）强制使用 RKNN NPU 和 FP16 双模型，不会静默回退到 CPU。两种硬件
+都显示 Qt 实时界面。按 `Q` 或 `Esc` 退出，按 `S` 保存界面截图。
 
-Headless 运行：
-
-```bash
-cmake -S . -B build -DCMAKE_BUILD_TYPE=Release \
-  -DDOUBLE_OK_BUILD_QT_DEMO=OFF
-cmake --build build -j2
-build/double-ok-headless \
-  --camera /dev/video6 \
-  --disable-auto-capture \
-  --max-frames 100 \
-  --status-interval 0
-```
-
-自定义模型时，掌心和手部模型必须成对覆盖：
+若 RK3588 板端的 RKNN SDK 不在系统标准路径，运行前设置一次：
 
 ```bash
-scripts/run_demo.sh /dev/video6 \
-  --palm-model /path/to/palm.onnx \
-  --hand-model /path/to/hand_landmark.onnx
+export RKNN_SDK_ROOT=/path/to/rknn-toolkit2/rknpu2
 ```
 
 ## 构建与测试
@@ -73,11 +62,18 @@ scripts/test.sh
 DOUBLE_OK_BUILD_QT_DEMO=ON BUILD_DIR=build-full scripts/test.sh
 ```
 
-## RK3588
+## 重新生成 RKNN 模型
 
-这套 ONNX 可在 RK3588 的 AArch64 Linux 上通过 OpenCV DNN CPU 运行，不依赖专用
-运行时。当前仓库不包含 NPU 转换链或板级运行库；如需 NPU 加速，需要另行把两个
-ONNX 模型转换并重新实现对应后端。
+需要重新生成模型时，在 x86_64 Python 3.12 环境安装 RKNN Toolkit2 2.3.2：
+
+```bash
+python3 -m venv .venv-rknn
+.venv-rknn/bin/pip install --index-url https://download.pytorch.org/whl/cpu torch==2.4.0
+.venv-rknn/bin/pip install -r scripts/requirements-rknn.txt
+.venv-rknn/bin/python scripts/convert_rknn_models.py
+```
+
+Python 只用于离线模型转换，板端运行仍为纯 C++。
 
 配置字段见 [运行配置](docs/runtime_configuration.md)，模块边界见
 [架构说明](docs/architecture.md)，精度验收见

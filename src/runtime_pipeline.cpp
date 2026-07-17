@@ -6,7 +6,18 @@
 
 namespace double_ok_gesture {
 
+LandmarkBackend default_landmark_backend() {
+#ifdef DOUBLE_OK_HAS_RKNN
+    return LandmarkBackend::Rknn;
+#else
+    return LandmarkBackend::Onnx;
+#endif
+}
+
 LandmarkBackend landmark_backend_from_string(const std::string& value) {
+    if (value == "rknn" || value == "mediapipe-rknn") {
+        return LandmarkBackend::Rknn;
+    }
     if (value == "onnx" || value == "mediapipe-onnx") {
         return LandmarkBackend::Onnx;
     }
@@ -17,11 +28,13 @@ LandmarkBackend landmark_backend_from_string(const std::string& value) {
         return LandmarkBackend::None;
     }
     throw std::invalid_argument(
-        "--landmark-backend must be one of: onnx, landmarks-json, none");
+        "--landmark-backend must be one of: rknn, onnx, landmarks-json, none");
 }
 
 const char* landmark_backend_value(LandmarkBackend backend) {
     switch (backend) {
+        case LandmarkBackend::Rknn:
+            return "rknn";
         case LandmarkBackend::Onnx:
             return "onnx";
         case LandmarkBackend::LandmarksJson:
@@ -33,6 +46,13 @@ const char* landmark_backend_value(LandmarkBackend backend) {
 }
 
 bool landmark_backend_available_in_current_build(LandmarkBackend backend) {
+    if (backend == LandmarkBackend::Rknn) {
+#ifdef DOUBLE_OK_HAS_RKNN
+        return true;
+#else
+        return false;
+#endif
+    }
     return backend == LandmarkBackend::Onnx ||
            backend == LandmarkBackend::LandmarksJson ||
            backend == LandmarkBackend::None;
@@ -40,6 +60,26 @@ bool landmark_backend_available_in_current_build(LandmarkBackend backend) {
 
 std::unique_ptr<HandLandmarkProvider> make_landmark_provider(const RuntimeOptions& options, const RuntimeConfig& config) {
     const LandmarkBackend backend = options.landmark_backend;
+    if (backend == LandmarkBackend::Rknn) {
+#ifdef DOUBLE_OK_HAS_RKNN
+        return std::make_unique<MediaPipeRknnHandLandmarkProvider>(
+            MediaPipeRknnPipelineConfig{
+                options.palm_model_path.value_or(
+                    config.rknn_hand.palm_model_path),
+                options.hand_model_path.value_or(
+                    config.rknn_hand.hand_model_path),
+                config.recognizer.max_num_hands,
+                config.onnx_hand.palm_detection_threshold,
+                config.onnx_hand.hand_presence_threshold,
+                config.onnx_hand.palm_nms_threshold,
+                config.onnx_hand.input_mirrored,
+            });
+#else
+        throw std::runtime_error(
+            "RKNN backend is not available in this build; configure with "
+            "-DDOUBLE_OK_REQUIRE_RKNN=ON -DRKNN_SDK_ROOT=/path/to/rknpu2");
+#endif
+    }
     if (backend == LandmarkBackend::Onnx) {
         return std::make_unique<MediaPipeOnnxHandLandmarkProvider>(
             MediaPipeOnnxPipelineConfig{

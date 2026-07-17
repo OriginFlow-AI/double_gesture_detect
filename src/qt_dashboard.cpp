@@ -55,7 +55,17 @@ std::string model_label_for(
         return "MediaPipe ONNX FP32 · " + palm.filename().string() +
                " + " + hand.filename().string();
     }
+    if (options.landmark_backend == LandmarkBackend::Rknn) {
+        const auto palm = options.palm_model_path.value_or(
+            config.rknn_hand.palm_model_path);
+        const auto hand = options.hand_model_path.value_or(
+            config.rknn_hand.hand_model_path);
+        return "MediaPipe RKNN FP16 · " + palm.filename().string() +
+               " + " + hand.filename().string();
+    }
     switch (options.landmark_backend) {
+        case LandmarkBackend::Rknn:
+            return "MediaPipe / RKNN NPU";
         case LandmarkBackend::Onnx:
             return "MediaPipe / ONNX";
         case LandmarkBackend::None:

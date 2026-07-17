@@ -6,6 +6,8 @@
   "input_mirrored": false,
   "palm_model_path": "models/opencv_zoo/palm_detection_mediapipe_2023feb.onnx",
   "hand_model_path": "models/opencv_zoo/handpose_estimation_mediapipe_2023feb_opencv46.onnx",
+  "rknn_palm_model_path": "models/rk3588/palm_detection_mediapipe_2023feb_fp16.rknn",
+  "rknn_hand_model_path": "models/rk3588/handpose_estimation_mediapipe_2023feb_fp16.rknn",
   "palm_detection_threshold": 0.55,
   "hand_presence_threshold": 0.80,
   "palm_nms_threshold": 0.30,

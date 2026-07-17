@@ -45,6 +45,8 @@ struct MediaPipeOnnxPipelineConfig {
     bool input_mirrored = false;
 };
 
+using MediaPipeRknnPipelineConfig = MediaPipeOnnxPipelineConfig;
+
 class MediaPipeOnnxHandLandmarkProvider : public HandLandmarkProvider {
 public:
     explicit MediaPipeOnnxHandLandmarkProvider(
@@ -55,6 +57,25 @@ public:
         const MediaPipeOnnxHandLandmarkProvider&) = delete;
     MediaPipeOnnxHandLandmarkProvider& operator=(
         const MediaPipeOnnxHandLandmarkProvider&) = delete;
+
+    LandmarkProviderInfo info() const override;
+    std::vector<DetectedHand> detect(const cv::Mat& frame_bgr) override;
+
+private:
+    struct Impl;
+    std::unique_ptr<Impl> impl_;
+};
+
+class MediaPipeRknnHandLandmarkProvider : public HandLandmarkProvider {
+public:
+    explicit MediaPipeRknnHandLandmarkProvider(
+        MediaPipeRknnPipelineConfig config);
+    ~MediaPipeRknnHandLandmarkProvider() override;
+
+    MediaPipeRknnHandLandmarkProvider(
+        const MediaPipeRknnHandLandmarkProvider&) = delete;
+    MediaPipeRknnHandLandmarkProvider& operator=(
+        const MediaPipeRknnHandLandmarkProvider&) = delete;
 
     LandmarkProviderInfo info() const override;
     std::vector<DetectedHand> detect(const cv::Mat& frame_bgr) override;

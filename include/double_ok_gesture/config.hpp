@@ -26,6 +26,13 @@ struct OnnxHandConfig {
     bool input_mirrored = false;
 };
 
+struct RknnHandConfig {
+    std::filesystem::path palm_model_path =
+        "models/rk3588/palm_detection_mediapipe_2023feb_fp16.rknn";
+    std::filesystem::path hand_model_path =
+        "models/rk3588/handpose_estimation_mediapipe_2023feb_fp16.rknn";
+};
+
 struct CameraConfig {
     std::string source = "/dev/video0";
     int width = 1280;
@@ -47,6 +54,7 @@ struct DataCaptureConfig {
 struct RuntimeConfig {
     RecognizerConfig recognizer;
     OnnxHandConfig onnx_hand;
+    RknnHandConfig rknn_hand;
     CaptureGateConfig capture_gate;
     DataCaptureConfig data_capture;
 };

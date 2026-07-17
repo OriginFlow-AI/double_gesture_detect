@@ -18,10 +18,13 @@
 namespace double_ok_gesture {
 
 enum class LandmarkBackend {
+    Rknn,
     Onnx,
     LandmarksJson,
     None,
 };
+
+LandmarkBackend default_landmark_backend();
 
 struct RuntimeOptions {
     CameraConfig camera;
@@ -34,7 +37,7 @@ struct RuntimeOptions {
     std::optional<double> capture_cooldown_sec;
     bool disable_auto_capture = false;
     std::string log_level = "INFO";
-    LandmarkBackend landmark_backend = LandmarkBackend::Onnx;
+    LandmarkBackend landmark_backend = default_landmark_backend();
     std::optional<std::filesystem::path> landmarks_json_path;
 };
 
@@ -45,7 +48,7 @@ struct RuntimeBundle {
     std::unique_ptr<HandLandmarkProvider> landmark_provider;
     CameraStream camera;
     RuntimeMetrics metrics;
-    LandmarkBackend landmark_backend = LandmarkBackend::Onnx;
+    LandmarkBackend landmark_backend = default_landmark_backend();
 };
 
 struct ProcessFrameOptions {
