@@ -1,5 +1,7 @@
 # Double OK Gesture Detect
 
+版本：`0.3.0-rk3588-npu`（RK3588 NPU 双手 OK 手势识别部署版）
+
 这是一个 C++20 / OpenCV / Qt 的双手 OK 实时识别项目。RK3588 部署以 NPU 为主：
 
 ```text
@@ -46,11 +48,32 @@ scripts/run_demo.sh /dev/video0
 RK3588（AArch64）强制使用 RKNN NPU 和 FP16 双模型，不会静默回退到 CPU。两种硬件
 都显示 Qt 实时界面。按 `Q` 或 `Esc` 退出，按 `S` 保存界面截图。
 
-若 RK3588 板端的 RKNN SDK 不在系统标准路径，运行前设置一次：
+仓库已包含 RKNN Runtime 2.3.2 的最小 AArch64 SDK，正常情况下无需另外设置路径。
+板端仍需安装与 Runtime 兼容的 RK3588 BSP/NPU 内核驱动，以及 OpenCV 4、Qt5
+Widgets 和 C++ 构建工具。若板端 BSP 要求使用其他版本的 RKNN Runtime，可覆盖路径：
 
 ```bash
 export RKNN_SDK_ROOT=/path/to/rknn-toolkit2/rknpu2
 ```
+
+首次部署建议确认：
+
+```bash
+uname -m                    # 应输出 aarch64 或 arm64
+sha256sum -c models/rk3588/SHA256SUMS
+scripts/run_demo.sh         # 默认相机 /dev/video6
+```
+
+需要交付不含测试、采集数据和 PC 模型的精简部署包时执行：
+
+```bash
+scripts/package_rk3588.sh
+```
+
+生成的 `dist/double-ok-rk3588-0.3.0-rk3588-npu.tar.gz` 解压后仍使用
+`scripts/run_demo.sh` 启动。
+
+同事部署步骤见 [RK3588 部署说明](DEPLOY_RK3588.md)。
 
 ## 构建与测试
 
@@ -62,7 +85,7 @@ scripts/test.sh
 DOUBLE_OK_BUILD_QT_DEMO=ON BUILD_DIR=build-full scripts/test.sh
 ```
 
-## 重新生成 RKNN 模型
+## 开发维护
 
 需要重新生成模型时，在 x86_64 Python 3.12 环境安装 RKNN Toolkit2 2.3.2：
 

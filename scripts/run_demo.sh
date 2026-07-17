@@ -14,13 +14,20 @@ HOST_ARCH="$(uname -m)"
 
 CMAKE_ARGS=(
   -DCMAKE_BUILD_TYPE=Release
+  -DBUILD_TESTING=OFF
   -DDOUBLE_OK_BUILD_QT_DEMO=ON
+  -DDOUBLE_OK_BUILD_CAMERA_CHECK=OFF
 )
 
 case "$HOST_ARCH" in
   aarch64|arm64)
     BUILD_DIR="${BUILD_DIR:-build-rk3588}"
     LANDMARK_BACKEND="rknn"
+    if [[ -z "${RKNN_SDK_ROOT:-}" && \
+          -f "third_party/rknn/include/rknn_api.h" && \
+          -f "third_party/rknn/aarch64/librknnrt.so" ]]; then
+      RKNN_SDK_ROOT="$PWD/third_party/rknn"
+    fi
     CMAKE_ARGS+=(
       -DDOUBLE_OK_ENABLE_RKNN=ON
       -DDOUBLE_OK_REQUIRE_RKNN=ON
@@ -71,6 +78,20 @@ without_sogou_qt() {
 CLEAN_LD_LIBRARY_PATH="$(without_sogou_qt "${LD_LIBRARY_PATH:-}")"
 CLEAN_QT_PLUGIN_PATH="$(without_sogou_qt "${QT_PLUGIN_PATH:-}")"
 CLEAN_QT_PLATFORM_PLUGIN_PATH="$(without_sogou_qt "${QT_QPA_PLATFORM_PLUGIN_PATH:-}")"
+
+if [[ "$LANDMARK_BACKEND" == "rknn" ]]; then
+  for rknn_runtime_dir in \
+    "$RKNN_SDK_ROOT/aarch64" \
+    "$RKNN_SDK_ROOT/lib" \
+    "$RKNN_SDK_ROOT/lib64" \
+    "$RKNN_SDK_ROOT/runtime/Linux/librknn_api/aarch64" \
+    "$RKNN_SDK_ROOT/rknpu2/runtime/Linux/librknn_api/aarch64"; do
+    if [[ -f "$rknn_runtime_dir/librknnrt.so" ]]; then
+      CLEAN_LD_LIBRARY_PATH="$rknn_runtime_dir${CLEAN_LD_LIBRARY_PATH:+:$CLEAN_LD_LIBRARY_PATH}"
+      break
+    fi
+  done
+fi
 
 echo "[double-ok] 启动相机 $CAMERA_SOURCE..." >&2
 exec env \

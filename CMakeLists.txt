@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.20)
 
-project(double_ok_gesture VERSION 0.2.0 LANGUAGES CXX)
+project(double_ok_gesture VERSION 0.3.0 LANGUAGES CXX)
 
 include(CTest)
 
@@ -11,6 +11,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 find_package(OpenCV REQUIRED COMPONENTS core dnn imgproc imgcodecs videoio)
 
 option(DOUBLE_OK_BUILD_QT_DEMO "Build the Qt live dashboard demo" ON)
+option(DOUBLE_OK_BUILD_CAMERA_CHECK "Build the camera diagnostic tool" ON)
 option(DOUBLE_OK_ENABLE_RKNN "Enable RKNN NPU backend when the SDK is available" ON)
 option(DOUBLE_OK_REQUIRE_RKNN "Fail configuration unless the RKNN SDK is available" OFF)
 set(RKNN_SDK_ROOT "" CACHE PATH "RKNN Toolkit2/rknpu2 SDK root")
@@ -31,6 +32,7 @@ if(DOUBLE_OK_ENABLE_RKNN)
     find_library(RKNN_RUNTIME_LIBRARY
         NAMES rknnrt
         HINTS
+            "${RKNN_SDK_ROOT}/aarch64"
             "${RKNN_SDK_ROOT}/lib"
             "${RKNN_SDK_ROOT}/lib64"
             "${RKNN_SDK_ROOT}/runtime/Linux/librknn_api/aarch64"
@@ -117,7 +119,9 @@ function(add_double_ok_executable target source)
     target_compile_options(${target} PRIVATE -Wall -Wextra -Wpedantic)
 endfunction()
 
-add_double_ok_executable(double-ok-camera-check apps/camera_check.cpp)
+if(DOUBLE_OK_BUILD_CAMERA_CHECK)
+    add_double_ok_executable(double-ok-camera-check apps/camera_check.cpp)
+endif()
 
 if(DOUBLE_OK_BUILD_QT_DEMO)
     find_package(Qt5 5.12 REQUIRED COMPONENTS Widgets)

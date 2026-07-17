@@ -17,3 +17,4 @@ models/*
 !models/rk3588/
 !models/rk3588/**
 reports/live/
+dist/

@@ -12,6 +12,7 @@
 ├── models/rk3588/                 # RK3588 NPU FP16 RKNN 双模型和清单
 ├── scripts/                      # 运行、测试、相机检查、RKNN 离线转换
 ├── src/                          # 推理、识别、门控、设备和 UI 实现
+├── third_party/rknn/             # RKNN 2.3.2 AArch64 最小运行 SDK
 └── tests/cpp/                    # C++ 自动测试
 ```
 
