@@ -202,6 +202,11 @@ struct QtDashboard::Impl {
             }
             return;
         }
+
+        if (options.right_half && frame->cols == 3840 && frame->rows == 1080) {
+            *frame = frame->operator()(cv::Rect(options.crop_x, options.crop_y, options.crop_width, options.crop_height)).clone();
+        }
+
         const auto frame_result = process_runtime_frame(runtime, *frame, process_frame_options());
         const auto& result = frame_result.result;
         const auto& decision = frame_result.decision;

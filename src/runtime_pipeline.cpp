@@ -145,6 +145,7 @@ RuntimeBundle make_runtime(const RuntimeOptions& options) {
         std::move(camera),
         RuntimeMetrics(),
         options.landmark_backend,
+        options.right_half,
     };
 }
 
@@ -160,8 +161,22 @@ RuntimeFrameResult process_runtime_frame(
     const cv::Mat& frame,
     const ProcessFrameOptions& options) {
     const double started = monotonic_seconds();
+
+    double crop_ms = 0.0;
+    cv::Mat input_frame = frame;
+    if (runtime.right_half && frame.cols == 3840 && frame.rows == 1080) {
+        const double crop_start = monotonic_seconds();
+        const int crop_width = 1280;
+        const int crop_height = 720;
+        const int crop_x = (1920 - crop_width) / 2;
+        const int crop_y = (1080 - crop_height) / 2;
+        input_frame = frame(cv::Rect(crop_x, crop_y, crop_width, crop_height)).clone();
+        crop_ms = (monotonic_seconds() - crop_start) * 1000.0;
+        log_message(LogLevel::Debug, "crop=" + std::to_string(crop_ms) + "ms");
+    }
+
     const double inference_started = monotonic_seconds();
-    const auto detected_hands = detect_hands(runtime, frame);
+    const auto detected_hands = detect_hands(runtime, input_frame);
     const double inference_ms =
         (monotonic_seconds() - inference_started) * 1000.0;
     auto result = runtime.recognizer.process_hands(detected_hands);
@@ -170,7 +185,7 @@ RuntimeFrameResult process_runtime_frame(
         decision = evaluate_capture_gate(result, runtime.config.capture_gate, options.glasses_pose);
     }
     return {
-        std::move(result), std::move(decision), started, inference_ms};
+        std::move(result), std::move(decision), started, inference_ms, 0.0, 0.0, crop_ms};
 }
 
 }  // namespace double_ok_gesture

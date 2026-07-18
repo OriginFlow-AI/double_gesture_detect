@@ -20,6 +20,13 @@ double_ok_gesture::QtDashboardOptions dashboard_options_from_demo_args(const dou
     options.landmark_backend = args.landmark_backend;
     options.palm_model_path = args.palm_model;
     options.hand_model_path = args.hand_model;
+    options.right_half = args.right_half;
+    if (args.right_half) {
+        options.crop_x = 320;
+        options.crop_y = 180;
+        options.crop_width = 1280;
+        options.crop_height = 720;
+    }
     return options;
 }
 

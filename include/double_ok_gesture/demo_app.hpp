@@ -30,6 +30,7 @@ struct DemoArgs {
     int max_frames = 0;
     LandmarkBackend landmark_backend = default_landmark_backend();
     std::optional<std::filesystem::path> landmarks_json;
+    bool right_half = false;
 };
 
 DemoArgs parse_demo_args(int argc, char** argv);

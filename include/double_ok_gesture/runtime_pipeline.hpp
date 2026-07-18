@@ -39,6 +39,7 @@ struct RuntimeOptions {
     std::string log_level = "INFO";
     LandmarkBackend landmark_backend = default_landmark_backend();
     std::optional<std::filesystem::path> landmarks_json_path;
+    bool right_half = false;
 };
 
 struct RuntimeBundle {
@@ -49,6 +50,7 @@ struct RuntimeBundle {
     CameraStream camera;
     RuntimeMetrics metrics;
     LandmarkBackend landmark_backend = default_landmark_backend();
+    bool right_half = false;
 };
 
 struct ProcessFrameOptions {
@@ -61,6 +63,9 @@ struct RuntimeFrameResult {
     std::optional<CaptureGateDecision> decision;
     double started = 0.0;
     double inference_ms = 0.0;
+    double palm_detection_ms = 0.0;
+    double hand_landmark_ms = 0.0;
+    double crop_ms = 0.0;
 };
 
 LandmarkBackend landmark_backend_from_string(const std::string& value);

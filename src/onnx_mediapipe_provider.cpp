@@ -739,13 +739,25 @@ void validate_hand_outputs(const std::vector<cv::Mat>& outputs) {
     }
 }
 
-std::optional<DetectedHand> estimate_hand(
+struct HandResultTiming {
+    double prepare_ms = 0.0;
+    double infer_ms = 0.0;
+    double postprocess_ms = 0.0;
+};
+
+std::optional<DetectedHand> estimate_hand_with_timing(
     NetworkRunner& runner,
     const cv::Mat& frame_bgr,
     const PalmDetection& palm,
-    const MediaPipeOnnxPipelineConfig& config) {
+    const MediaPipeOnnxPipelineConfig& config,
+    HandResultTiming& timing) {
+    const double prepare_start = monotonic_seconds();
     const HandInputTransform transform = prepare_hand_input(frame_bgr, palm);
+    timing.prepare_ms = (monotonic_seconds() - prepare_start) * 1000.0;
+
+    const double infer_start = monotonic_seconds();
     std::vector<cv::Mat> outputs = runner.forward(transform.input);
+    timing.infer_ms = (monotonic_seconds() - infer_start) * 1000.0;
     validate_hand_outputs(outputs);
     for (cv::Mat& output : outputs) {
         if (!output.isContinuous()) {
@@ -762,6 +774,7 @@ std::optional<DetectedHand> estimate_hand(
         throw std::runtime_error("handedness model output is not finite");
     }
 
+    const double post_start = monotonic_seconds();
     const cv::Point2d palm_size =
         transform.rotated_palm_box[1] - transform.rotated_palm_box[0];
     const double scale =
@@ -855,6 +868,7 @@ std::optional<DetectedHand> estimate_hand(
         : "Unknown";
     LandmarkConfidences confidences{};
     confidences.fill(presence);
+    timing.postprocess_ms = (monotonic_seconds() - post_start) * 1000.0;
 
     return DetectedHand{
         normalized,
@@ -909,14 +923,25 @@ public:
             throw std::invalid_argument(
                 "MediaPipe provider requires a non-empty CV_8UC3 BGR frame");
         }
+        const double palm_start = monotonic_seconds();
         const auto palms = detect_palms(
             *palm_runner, anchors, frame_bgr, config);
+        const double palm_ms = (monotonic_seconds() - palm_start) * 1000.0;
+
+        const double hand_start = monotonic_seconds();
+        double hand_prepare_ms = 0.0;
+        double hand_infer_ms = 0.0;
+        double hand_postprocess_ms = 0.0;
         std::vector<DetectedHand> hands;
         hands.reserve(palms.size());
         for (const PalmDetection& palm : palms) {
             try {
-                if (auto hand = estimate_hand(
-                        *hand_runner, frame_bgr, palm, config)) {
+                HandResultTiming timing;
+                if (auto hand = estimate_hand_with_timing(
+                        *hand_runner, frame_bgr, palm, config, timing)) {
+                    hand_prepare_ms += timing.prepare_ms;
+                    hand_infer_ms += timing.infer_ms;
+                    hand_postprocess_ms += timing.postprocess_ms;
                     hands.push_back(std::move(*hand));
                 }
             } catch (const InvalidPalmCrop&) {
@@ -924,6 +949,11 @@ public:
                 // crop. Skip only that detection; the other hand remains usable.
             }
         }
+        const double hand_ms = (monotonic_seconds() - hand_start) * 1000.0;
+
+        log_message(LogLevel::Debug,
+            "palm_npu=" + std::to_string(palm_ms) + "ms, hand_prepare=" + std::to_string(hand_prepare_ms) + "ms, hand_npu=" + std::to_string(hand_infer_ms) + "ms, hand_post=" + std::to_string(hand_postprocess_ms) + "ms, palms=" + std::to_string(palms.size()) + ", hands=" + std::to_string(hands.size()));
+
         std::sort(
             hands.begin(), hands.end(),
             [](const DetectedHand& lhs, const DetectedHand& rhs) {

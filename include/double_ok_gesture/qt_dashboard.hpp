@@ -22,6 +22,11 @@ struct QtDashboardOptions {
     LandmarkBackend landmark_backend = default_landmark_backend();
     std::optional<std::filesystem::path> palm_model_path;
     std::optional<std::filesystem::path> hand_model_path;
+    bool right_half = false;
+    int crop_x = 0;
+    int crop_y = 0;
+    int crop_width = 0;
+    int crop_height = 0;
 };
 
 class QtDashboard {

@@ -171,7 +171,7 @@ def convert(contract: dict, output_dir: Path) -> dict:
     try:
         require_success(
             rknn.config(
-                target_platform="rk3588",
+                target_platform="rk3576",
                 mean_values=[[0, 0, 0]],
                 std_values=[[255, 255, 255]],
                 float_dtype="float16",
@@ -241,8 +241,8 @@ def main() -> int:
     parser.add_argument(
         "--output-dir",
         type=Path,
-        default=ROOT / "models/rk3588",
-        help="RKNN artifact directory (default: models/rk3588)",
+        default=ROOT / "models/rk3576",
+        help="RKNN artifact directory (default: models/rk3576)",
     )
     args = parser.parse_args()
     output_dir = args.output_dir.resolve()
@@ -250,7 +250,7 @@ def main() -> int:
     artifacts = [convert(contract, output_dir) for contract in CONTRACTS]
     manifest = {
         "schema": "double_ok_rknn_models_v1",
-        "target_platform": "rk3588",
+        "target_platform": "rk3576",
         "precision": "FP16",
         "quantized": False,
         "rknn_toolkit2": importlib.metadata.version("rknn-toolkit2"),

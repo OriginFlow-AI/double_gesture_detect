@@ -12,6 +12,9 @@ struct RuntimeSnapshot {
     double processing_ms = 0.0;
     std::size_t frame_count = 0;
     double inference_ms = 0.0;
+    double palm_detection_ms = 0.0;
+    double hand_landmark_ms = 0.0;
+    double crop_ms = 0.0;
 };
 
 class RuntimeMetrics {

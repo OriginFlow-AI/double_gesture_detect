@@ -5,6 +5,7 @@
 
 #include "double_ok_gesture/capture_gate.hpp"
 #include "double_ok_gesture/cli.hpp"
+#include "double_ok_gesture/qt_dashboard.hpp"
 
 namespace double_ok_gesture {
 
@@ -67,6 +68,8 @@ DemoArgs parse_demo_args(int argc, char** argv) {
             args.landmark_backend = landmark_backend_from_string(next());
         } else if (key == "--landmarks-json") {
             args.landmarks_json = next();
+        } else if (key == "--right-half") {
+            args.right_half = true;
         } else {
             throw std::invalid_argument("Unknown argument: " + key);
         }
@@ -98,6 +101,7 @@ RuntimeOptions demo_runtime_options(const DemoArgs& args) {
     options.log_level = args.log_level;
     options.landmark_backend = args.landmark_backend;
     options.landmarks_json_path = args.landmarks_json;
+    options.right_half = args.right_half;
     return options;
 }
 
@@ -107,6 +111,23 @@ ProcessFrameOptions demo_process_frame_options(const DemoArgs& args) {
     if (args.glasses_pose) {
         options.glasses_pose = load_glasses_pose(*args.glasses_pose);
     }
+    return options;
+}
+
+QtDashboardOptions demo_dashboard_options(const DemoArgs& args) {
+    QtDashboardOptions options;
+    options.width = args.dashboard_width;
+    options.height = args.dashboard_height;
+    options.fullscreen = args.fullscreen;
+    options.screenshot_dir = args.screenshot_dir;
+    options.max_frames = args.max_frames;
+    options.target_fps = args.target_fps;
+    options.capture_gate = args.capture_gate;
+    options.glasses_pose = args.glasses_pose;
+    options.landmark_backend = args.landmark_backend;
+    options.palm_model_path = args.palm_model;
+    options.hand_model_path = args.hand_model;
+    options.right_half = args.right_half;
     return options;
 }
 
