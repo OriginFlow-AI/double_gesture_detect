@@ -9,12 +9,17 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
 find_package(OpenCV REQUIRED COMPONENTS core dnn imgproc imgcodecs videoio)
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(GSTREAMER REQUIRED gstreamer-1.0 gstreamer-video-1.0 gstreamer-app-1.0)
 
 option(DOUBLE_OK_BUILD_QT_DEMO "Build the Qt live dashboard demo" ON)
 option(DOUBLE_OK_BUILD_CAMERA_CHECK "Build the camera diagnostic tool" ON)
 option(DOUBLE_OK_ENABLE_RKNN "Enable RKNN NPU backend when the SDK is available" ON)
 option(DOUBLE_OK_REQUIRE_RKNN "Fail configuration unless the RKNN SDK is available" OFF)
 set(RKNN_SDK_ROOT "" CACHE PATH "RKNN Toolkit2/rknpu2 SDK root")
+
+option(DOUBLE_OK_ENABLE_MPP "Enable MPP hardware decoding (requires RK3576 board)" ON)
+set(MPP_SYSROOT "" CACHE PATH "MPP sysroot for cross-compilation (e.g. /path/to/mpp_sysroot)")
 
 if(DOUBLE_OK_REQUIRE_RKNN)
     set(DOUBLE_OK_ENABLE_RKNN ON)
@@ -52,6 +57,30 @@ if(DOUBLE_OK_ENABLE_RKNN)
     endif()
 endif()
 
+set(DOUBLE_OK_HAS_MPP OFF)
+if(DOUBLE_OK_ENABLE_MPP)
+    set(MPP_INCLUDE_DIRS "" CACHE PATH "MPP include directories")
+    set(MPP_LIBRARY_DIRS "" CACHE PATH "MPP library directories")
+    if(MPP_SYSROOT)
+        set(MPP_INCLUDE_DIRS "${MPP_SYSROOT}/usr/include/rockchip")
+        find_library(MPP_LIBRARY mpp PATHS "${MPP_SYSROOT}/usr/lib" "${MPP_SYSROOT}/lib" NO_DEFAULT_PATH)
+        if(MPP_LIBRARY)
+            set(MPP_LIBRARY_DIRS "${MPP_LIBRARY}")
+        endif()
+    else()
+        find_library(MPP_LIBRARY mpp)
+        if(MPP_LIBRARY)
+            get_filename_component(MPP_LIBRARY_DIRS "${MPP_LIBRARY}" DIRECTORY)
+        endif()
+    endif()
+    if(MPP_LIBRARY)
+        set(DOUBLE_OK_HAS_MPP ON)
+        message(STATUS "MPP hardware decoding enabled: ${MPP_LIBRARY}")
+    else()
+        message(STATUS "MPP library not found; GStreamer-based HEVC decoding will be used")
+    endif()
+endif()
+
 set(DOUBLE_OK_CORE_SOURCES
     src/camera.cpp
     src/cli.cpp
@@ -59,6 +88,8 @@ set(DOUBLE_OK_CORE_SOURCES
     src/capture_gate.cpp
     src/config.cpp
     src/features.cpp
+    src/hevc_async_reader.cpp
+    src/hevc_mpp_reader.cpp
     src/json.cpp
     src/landmark_provider.cpp
     src/live_ui.cpp
@@ -74,6 +105,7 @@ target_include_directories(double_ok_gesture_core
     PUBLIC
         ${CMAKE_CURRENT_SOURCE_DIR}/include
         ${OpenCV_INCLUDE_DIRS}
+        ${GSTREAMER_INCLUDE_DIRS}
 )
 
 target_link_libraries(double_ok_gesture_core
@@ -83,6 +115,11 @@ target_link_libraries(double_ok_gesture_core
         opencv_imgproc
         opencv_imgcodecs
         opencv_videoio
+        ${GSTREAMER_LIBRARIES}
+        ${GSTREAMER_VIDEO_LIBRARIES}
+        ${GSTREAMER_APP_LIBRARIES}
+        pthread
+        dl
 )
 
 if(DOUBLE_OK_HAS_RKNN)
@@ -96,6 +133,16 @@ if(DOUBLE_OK_HAS_RKNN)
     set_target_properties(double_ok_gesture_core PROPERTIES
         INSTALL_RPATH "$ORIGIN/../lib"
     )
+endif()
+
+if(DOUBLE_OK_HAS_MPP)
+    target_compile_definitions(double_ok_gesture_core PRIVATE DOUBLE_OK_HAS_MPP=1)
+    if(MPP_INCLUDE_DIRS)
+        target_include_directories(double_ok_gesture_core PRIVATE ${MPP_INCLUDE_DIRS})
+    endif()
+    if(MPP_LIBRARY)
+        target_link_libraries(double_ok_gesture_core PRIVATE ${MPP_LIBRARY})
+    endif()
 endif()
 
 find_library(OPENCV_FREETYPE_LIBRARY NAMES opencv_freetype HINTS ${OpenCV_LIBRARY_DIRS})
@@ -123,6 +170,8 @@ if(DOUBLE_OK_BUILD_CAMERA_CHECK)
     add_double_ok_executable(double-ok-camera-check apps/camera_check.cpp)
 endif()
 
+add_double_ok_executable(double-ok-test-hevc apps/test_hevc_capture.cpp)
+
 if(DOUBLE_OK_BUILD_QT_DEMO)
     find_package(Qt5 5.12 REQUIRED COMPONENTS Widgets)
     add_double_ok_executable(double-ok-demo apps/demo.cpp)
@@ -130,6 +179,12 @@ if(DOUBLE_OK_BUILD_QT_DEMO)
     target_compile_definitions(double-ok-demo PRIVATE QT_NO_KEYWORDS)
     target_compile_options(double-ok-demo PRIVATE -fPIC)
     target_link_libraries(double-ok-demo PRIVATE double_ok_gesture_demo_app Qt5::Widgets)
+
+    add_double_ok_executable(double-ok-demo-hevc apps/demo_hevc.cpp)
+    target_sources(double-ok-demo-hevc PRIVATE src/qt_dashboard.cpp)
+    target_compile_definitions(double-ok-demo-hevc PRIVATE QT_NO_KEYWORDS)
+    target_compile_options(double-ok-demo-hevc PRIVATE -fPIC)
+    target_link_libraries(double-ok-demo-hevc PRIVATE double_ok_gesture_demo_app Qt5::Widgets)
 endif()
 
 if(BUILD_TESTING)
@@ -153,4 +208,7 @@ if(BUILD_TESTING)
     target_compile_definitions(
         double_ok_model_replacement_tests
         PRIVATE DOUBLE_OK_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
+    add_double_ok_test(
+        double_ok_hevc_reader_tests
+        tests/cpp/test_hevc_reader.cpp)
 endif()

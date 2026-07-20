@@ -83,7 +83,6 @@ struct QtDashboard::Impl {
         : application(application), runtime(runtime), options(std::move(options)),
           capture_writer(runtime.config.data_capture) {
         build_ui();
-        connect_actions();
     }
 
     QApplication& application;
@@ -97,6 +96,7 @@ struct QtDashboard::Impl {
     bool stopping = false;
 
     QLabel* video_label = nullptr;
+    std::unique_ptr<HevcAsyncReader> hevc_reader;
 
     ProcessFrameOptions process_frame_options() const {
         ProcessFrameOptions frame_options;
@@ -247,6 +247,7 @@ struct QtDashboard::Impl {
     }
 
     int run() {
+        connect_actions();
         timer.start(0);
         if (options.fullscreen) {
             window.showFullScreen();
@@ -263,6 +264,142 @@ struct QtDashboard::Impl {
         window.activateWindow();
         return application.exec();
     }
+
+    QString hevc_camera_label() const {
+        const auto& info = hevc_reader->info();
+        return QStringLiteral("%1 | %2x%3 | %4 帧/秒 | %5 (异步)")
+            .arg(QString::fromStdString(info.source))
+            .arg(info.width)
+            .arg(info.height)
+            .arg(info.fps, 0, 'f', 1)
+            .arg(QString::fromStdString(info.fourcc));
+    }
+
+    void update_frame_hevc() {
+        try {
+            auto frame = hevc_reader->read();
+            static int no_frame_count = 0;
+            if (!frame) {
+                if (no_frame_count < 3) {
+                    log_message(LogLevel::Debug, "HEVC: no frame available, count=" + std::to_string(no_frame_count));
+                    no_frame_count++;
+                }
+                if (last_rendered_frame.empty()) {
+                    present_dashboard(render_dashboard(
+                        cv::Mat{},
+                        DoubleOKResult{},
+                        std::nullopt,
+                        RuntimeSnapshot{0.0, 0.0, 0},
+                        hevc_camera_label().toStdString(),
+                        options.target_fps,
+                        model_label_for(options, runtime.config),
+                        options.width,
+                        options.height));
+                }
+                return;
+            }
+
+            auto t_crop_start = std::chrono::steady_clock::now();
+            if (frame->cols == 2560 && frame->rows == 1024) {
+                // Crop to left half: 1280x1024
+                *frame = frame->operator()(cv::Rect(0, 0, 1280, 1024)).clone();
+            }
+            auto crop_ms = std::chrono::duration_cast<std::chrono::microseconds>(
+                std::chrono::steady_clock::now() - t_crop_start).count() / 1000.0;
+
+            auto t_inference_start = std::chrono::steady_clock::now();
+            const auto frame_result = process_runtime_frame(runtime, *frame, process_frame_options());
+            auto inference_ms = std::chrono::duration_cast<std::chrono::microseconds>(
+                std::chrono::steady_clock::now() - t_inference_start).count() / 1000.0;
+
+            const auto& result = frame_result.result;
+            const auto& decision = frame_result.decision;
+
+            auto t_draw_start = std::chrono::steady_clock::now();
+            if (decision) {
+                if (auto saved = capture_writer.maybe_save(
+                        *frame,
+                        result,
+                        *decision,
+                        landmark_backend_value(options.landmark_backend))) {
+                    window.setWindowTitle(QStringLiteral("双手 OK 采集门控 · 已采集 %1").arg(QString::fromStdString(saved->filename().string())));
+                }
+            }
+            auto snapshot = runtime.metrics.update(frame_result.started);
+            snapshot.inference_ms = frame_result.inference_ms;
+            ++frames;
+
+            cv::Mat display = frame->clone();
+            draw_hand_tracking(display, result);
+            if (decision) {
+                draw_capture_guides(display, *decision, runtime.config.capture_gate);
+            }
+            cv::Mat dashboard = render_dashboard(
+                display,
+                result,
+                decision,
+                snapshot,
+                hevc_camera_label().toStdString(),
+                options.target_fps,
+                model_label_for(options, runtime.config),
+                options.width,
+                options.height);
+            auto draw_ms = std::chrono::duration_cast<std::chrono::microseconds>(
+                std::chrono::steady_clock::now() - t_draw_start).count() / 1000.0;
+            present_dashboard(dashboard);
+
+            // Log timing every second
+            static auto last_log_time = std::chrono::steady_clock::now();
+            auto now = std::chrono::steady_clock::now();
+            if (std::chrono::duration_cast<std::chrono::seconds>(now - last_log_time).count() >= 1) {
+                log_message(LogLevel::Info, "Qt: crop=" + std::to_string(crop_ms) +
+                    "ms infer=" + std::to_string(inference_ms) + "ms draw=" +
+                    std::to_string(draw_ms) + "ms");
+                last_log_time = now;
+            }
+
+            if (options.max_frames > 0 && frames >= options.max_frames) {
+                stopping = true;
+                application.quit();
+            }
+        } catch (const std::exception& e) {
+            log_message(LogLevel::Error, std::string("update_frame_hevc exception: ") + e.what());
+        }
+    }
+
+    int run_hevc_internal() {
+        connect_hevc_actions();
+        timer.start(0);
+        timer.start(0);
+        if (options.fullscreen) {
+            window.showFullScreen();
+        } else {
+            if (const QScreen* screen = application.primaryScreen()) {
+                const QRect available = screen->availableGeometry();
+                window.move(
+                    available.x() + (available.width() - window.width()) / 2,
+                    available.y() + (available.height() - window.height()) / 2);
+            }
+            window.show();
+        }
+        window.raise();
+        window.activateWindow();
+        return application.exec();
+    }
+
+    void connect_hevc_actions() {
+        timer.setSingleShot(true);
+        QObject::connect(&timer, &QTimer::timeout, [&]() {
+            try {
+                update_frame_hevc();
+            } catch (const std::exception& e) {
+                log_message(LogLevel::Error, std::string("HEVC timer callback exception: ") + e.what());
+            }
+            if (!stopping) {
+                timer.start(frame_interval_ms());
+            }
+        });
+    }
 };
 
 QtDashboard::QtDashboard(QApplication& application, RuntimeBundle& runtime, QtDashboardOptions options)
@@ -272,6 +409,11 @@ QtDashboard::~QtDashboard() = default;
 
 int QtDashboard::run() {
     return impl_->run();
+}
+
+int QtDashboard::run_hevc(std::unique_ptr<HevcAsyncReader> hevc_reader) {
+    impl_->hevc_reader = std::move(hevc_reader);
+    return impl_->run_hevc_internal();
 }
 
 }  // namespace double_ok_gesture

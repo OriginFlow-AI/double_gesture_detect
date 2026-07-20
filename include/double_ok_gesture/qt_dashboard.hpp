@@ -4,6 +4,7 @@
 #include <memory>
 #include <optional>
 
+#include "double_ok_gesture/hevc_async_reader.hpp"
 #include "double_ok_gesture/runtime_pipeline.hpp"
 
 class QApplication;
@@ -38,6 +39,14 @@ public:
     QtDashboard& operator=(const QtDashboard&) = delete;
 
     int run();
+
+    /**
+     * Run with HEVC async camera reader.
+     *
+     * @param hevc_reader Unique pointer to HevcAsyncReader (ownership transferred)
+     * @return Exit code
+     */
+    int run_hevc(std::unique_ptr<HevcAsyncReader> hevc_reader);
 
 private:
     struct Impl;

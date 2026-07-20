@@ -27,6 +27,7 @@ struct CameraInfo {
 
 class CameraStream {
 public:
+    CameraStream() = default;
     CameraStream(cv::VideoCapture capture, CameraConfig settings, CameraInfo info, cv::Mat pending_frame);
     std::optional<cv::Mat> read();
     void close();

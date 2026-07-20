@@ -73,6 +73,7 @@ const char* landmark_backend_value(LandmarkBackend backend);
 bool landmark_backend_available_in_current_build(LandmarkBackend backend);
 
 RuntimeBundle make_runtime(const RuntimeOptions& options);
+std::unique_ptr<HandLandmarkProvider> make_landmark_provider(const RuntimeOptions& options, const RuntimeConfig& config);
 std::vector<DetectedHand> detect_hands(const RuntimeBundle& runtime, const cv::Mat& frame);
 RuntimeFrameResult process_runtime_frame(
     RuntimeBundle& runtime,
