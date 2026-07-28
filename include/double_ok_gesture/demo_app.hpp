@@ -28,6 +28,8 @@ struct DemoArgs {
     bool disable_auto_capture = false;
     std::string log_level = "INFO";
     int max_frames = 0;
+    int detection_skip_frames = 1;  // 跳帧检测：每 N 帧做一次推理
+    bool loop_file = false;         // 文件输入时循环播放
     LandmarkBackend landmark_backend = default_landmark_backend();
     std::optional<std::filesystem::path> landmarks_json;
     bool right_half = false;

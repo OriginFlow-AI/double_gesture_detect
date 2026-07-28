@@ -85,11 +85,18 @@ int main(int argc, char** argv) {
         auto landmark_provider = double_ok_gesture::make_landmark_provider(
             runtime_opts, runtime_config);
 
+        // 判断输入源类型：/dev/videoX 走 v4l2src，其他路径走 filesrc
+        const bool is_file_input = runtime_opts.camera.source.find("/dev/video") != 0;
         auto hevc_reader = std::make_unique<double_ok_gesture::HevcAsyncReader>(
             runtime_opts.camera.source,
             runtime_opts.camera.width,
             runtime_opts.camera.height,
-            runtime_opts.camera.fps);
+            runtime_opts.camera.fps,
+            2,
+            is_file_input
+                ? double_ok_gesture::HevcAsyncReader::SourceType::FILE
+                : double_ok_gesture::HevcAsyncReader::SourceType::V4L2,
+            args.loop_file);
 
         double_ok_gesture::log_message(
             double_ok_gesture::LogLevel::Info,

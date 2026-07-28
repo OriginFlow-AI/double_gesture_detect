@@ -71,7 +71,10 @@ cv::Mat gst_sample_to_mat(GstSample* sample) {
     cv::Mat mat;
     const gchar* format = gst_structure_get_string(s, "format");
 
-    // RGB format from videoconvert - already in BGR order after cvtColor, just copy
+    // 架构 v2：解码与色彩转换分离
+    //   - decoder_loop 线程中只做轻量映射（不执行 cvtColor），保证每帧解码
+    //   - consumer 线程按需执行 cvtColor (NV12/I420 → BGR) + 推理
+    // RGB 路径：仍直接转 BGR（consumer 期望 3 通道 BGR）
     if (format && strcmp(format, "RGB") == 0) {
         if (stride == width * 3) {
             cv::Mat rgb(height, width, CV_8UC3, map.data);
@@ -81,9 +84,6 @@ cv::Mat gst_sample_to_mat(GstSample* sample) {
             cv::Mat rgb_cropped = rgb_with_stride(cv::Rect(0, 0, width, height));
             cv::cvtColor(rgb_cropped, mat, cv::COLOR_RGB2BGR);
         }
-    } else if (format && strcmp(format, "I420") == 0) {
-        cv::Mat yuv(height * 3 / 2, width, CV_8UC1, map.data);
-        cv::cvtColor(yuv, mat, cv::COLOR_YUV2BGR_I420);
     } else if (format && (strcmp(format, "RGBA") == 0 || strcmp(format, "BGRA") == 0)) {
         cv::Mat rgba(height, width, CV_8UC4, map.data);
         if (strcmp(format, "BGRA") == 0) {
@@ -95,9 +95,10 @@ cv::Mat gst_sample_to_mat(GstSample* sample) {
         cv::Mat rgbx(height, width, CV_8UC4, map.data);
         cv::cvtColor(rgbx, mat, cv::COLOR_RGBA2BGR);
     } else {
-        // Default fallback - try NV12
-        cv::Mat yuv(height * 3 / 2, width, CV_8UC1, map.data);
-        cv::cvtColor(yuv, mat, cv::COLOR_YUV2BGR_NV12);
+        // NV12 / I420 路径：直接返回 NV12 (YUV420) 数据，consumer 按需 cvtColor
+        // 标记为 CV_8UC1 + h*3/2 行：这是 OpenCV 表示 YUV420 紧凑平面的标准做法
+        // 外部代码通过 channels()==1 && rows == height*3/2 判断是 YUV 格式
+        mat = cv::Mat(height * 3 / 2, width, CV_8UC1, map.data);
     }
 
     gst_buffer_unmap(buffer, &map);
@@ -115,24 +116,57 @@ HevcAsyncReader::HevcAsyncReader(
     const int width,
     const int height,
     const double fps,
-    const size_t max_queue_size)
-    : max_queue_size_(max_queue_size) {
+    const size_t max_queue_size,
+    const SourceType source_type,
+    const bool loop_file)
+    : max_queue_size_(max_queue_size),
+      source_type_(source_type),
+      loop_file_(loop_file) {
 
     gst_init(nullptr, nullptr);
 
-    log_message(LogLevel::Info, "Opening HEVC camera via GStreamer: " + device);
+    log_message(
+        LogLevel::Info,
+        std::string(source_type == SourceType::FILE ? "Opening HEVC file: " : "Opening HEVC camera via GStreamer: ") + device +
+        (loop_file ? " (loop)" : ""));
 
     int right_crop = width / 2;
-    std::string pipeline_str = "v4l2src device=" + device +
+    (void)right_crop;  // 抑制未使用变量警告：实际裁剪通过 GStreamer videocrop 完成
+    // 摄像头拼接模式时取左半（在解码后立即裁剪，避免重复占用解码资源）
+    //   2560x1024 -> 1280x1024（左半）
+    //   3840x1080 -> 1920x1080（左半）
+    std::string crop_filter;
+    if (width == 2560 && height == 1024) {
+        crop_filter = " ! videocrop right=1280 top=0 bottom=0";
+    } else if (width == 3840 && height == 1080) {
+        crop_filter = " ! videocrop right=1920 top=0 bottom=0";
+    }
+    // 源输入：v4l2src (实时摄像头) 或 filesrc (h265 文件回放)
+    std::string source_str;
+    if (source_type == SourceType::FILE) {
+        // loop_file=true 时 filesrc loop=true 自动循环播放
+        source_str = "filesrc location=" + device + (loop_file ? " loop=true" : "");
+    } else {
+        source_str = "v4l2src device=" + device;
+    }
+    std::string pipeline_str = source_str +
         " ! video/x-h265,stream-format=byte-stream,width=" + std::to_string(width) +
         ",height=" + std::to_string(height) +
         ",framerate=" + std::to_string(static_cast<int>(fps)) + "/1"
         " ! h265parse"
-        " ! queue leaky=2 max-size-buffers=1"
+        // 架构说明（v2）：解码与色彩转换分离
+        //   - pipeline 端：仅做解码 + crop（保持 NV12，无 videoconvert），保证 mppvideodec 不被反压
+        //   - consumer 端：每 N 帧（detection_skip_frames）做一次 NV12→BGR + 手势推理
+        //   - 收益：mppvideodec 可持续以 30 fps 输出，videoconvert 慢路径只在 1/N 帧执行
+        // queue 配置：保留 4 帧缓冲 + leaky=2 (下游丢旧)，避免反压时丢 I 帧
+        " ! queue leaky=2 max-size-buffers=4 max-size-time=0 max-size-bytes=0"
         " ! mppvideodec"
-        " ! videoconvert"
-        " ! video/x-raw,format=RGB"
-        " ! appsink name=sink emit-signals=false sync=false";
+        // crop 减少后续 consumer 的处理量（在 mppvideodec 之后、videoconvert 之前）
+        + crop_filter +
+        // 不做 videoconvert：appsink 接收 NV12，consumer 按需 NV12→BGR
+        " ! video/x-raw,format=NV12"
+        // appsink 配置：max-buffers=1 + drop=true，消费者慢时主动丢旧 buffer
+        " ! appsink name=sink max-buffers=1 drop=true emit-signals=false sync=false";
 
     log_message(LogLevel::Info, "GStreamer pipeline: " + pipeline_str);
 
@@ -238,6 +272,20 @@ void HevcAsyncReader::decoder_loop() {
 
         if (!sample) {
             empty_count++;
+            // 文件源 EOS：仅当 loop_file=true 时 seek 重置循环（仅 file 模式）
+            // 注：mppvideodec seek 后内部状态可能损坏（持续 0 帧），生产环境建议
+            //     用 --max-frames 配合外部脚本重启，更可靠。
+            if (loop_file_ && source_type_ == SourceType::FILE && pipeline_ != nullptr) {
+                log_message(LogLevel::Info, "File EOS reached, seeking back to 0 for loop playback");
+                gst_element_seek(
+                    reinterpret_cast<GstElement*>(pipeline_),
+                    1.0,           // rate
+                    GST_FORMAT_TIME,
+                    GST_SEEK_FLAG_FLUSH,
+                    GST_SEEK_TYPE_SET, 0,    // start
+                    GST_SEEK_TYPE_NONE, GST_CLOCK_TIME_NONE);  // end
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
             continue;
         }
 

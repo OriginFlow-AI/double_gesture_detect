@@ -94,6 +94,8 @@ struct QtDashboard::Impl {
     cv::Mat last_rendered_frame;
     int frames = 0;
     bool stopping = false;
+    // 跳帧显示计数器：每 N 帧才做一次推理+绘制+显示
+    int detection_counter = 0;
 
     QLabel* video_label = nullptr;
     std::unique_ptr<HevcAsyncReader> hevc_reader;
@@ -299,16 +301,36 @@ struct QtDashboard::Impl {
                 return;
             }
 
-            auto t_crop_start = std::chrono::steady_clock::now();
-            if (frame->cols == 2560 && frame->rows == 1024) {
-                // Crop to left half: 1280x1024
-                *frame = frame->operator()(cv::Rect(0, 0, 1280, 1024)).clone();
+            // 跳帧显示：每 N 帧才完整处理（推理+绘制+显示），其余帧直接 return
+            // 由 GStreamer 持续解码（不阻塞），但 dashboard 仅每 N 帧刷新一次
+            // 已在 frame_queue_ 中堆积的旧帧会被 decoder_loop 主动丢弃
+            const int skip = std::max(1, options.detection_skip_frames);
+            detection_counter++;
+            if (detection_counter % skip != 0) {
+                // 跳过此次绘制：保持上一帧画面不变（避免闪烁）
+                return;
             }
-            auto crop_ms = std::chrono::duration_cast<std::chrono::microseconds>(
-                std::chrono::steady_clock::now() - t_crop_start).count() / 1000.0;
+            no_frame_count = 0;
 
+            auto t_crop_start = std::chrono::steady_clock::now();
+            // 注：pipeline v2 已在 mppvideodec 之后做了 crop（gstreamer videocrop）
+            //   - 2560x1024 → 1280x1024
+            //   - 3840x1080 → 1920x1080
+            // 此处不再做 cv::Rect crop（避免在 consumer 线程再做一次）
+            auto crop_ms = 0.0;
+
+            // 解耦设计：frame 可能是 NV12 (pipeline v2) 或 BGR (旧 RGB pipeline)
+            // 先做 cvtColor（每 10 帧执行一次），得到 bgr 后续统一使用
+            cv::Mat bgr;
+            if (frame->channels() == 1) {
+                cv::cvtColor(*frame, bgr, cv::COLOR_YUV2BGR_NV12);
+            } else {
+                bgr = frame->clone();
+            }
+
+            // 推理（输入 BGR）
             auto t_inference_start = std::chrono::steady_clock::now();
-            const auto frame_result = process_runtime_frame(runtime, *frame, process_frame_options());
+            const auto frame_result = process_runtime_frame(runtime, bgr, process_frame_options());
             auto inference_ms = std::chrono::duration_cast<std::chrono::microseconds>(
                 std::chrono::steady_clock::now() - t_inference_start).count() / 1000.0;
 
@@ -318,7 +340,7 @@ struct QtDashboard::Impl {
             auto t_draw_start = std::chrono::steady_clock::now();
             if (decision) {
                 if (auto saved = capture_writer.maybe_save(
-                        *frame,
+                        bgr,
                         result,
                         *decision,
                         landmark_backend_value(options.landmark_backend))) {
@@ -329,7 +351,7 @@ struct QtDashboard::Impl {
             snapshot.inference_ms = frame_result.inference_ms;
             ++frames;
 
-            cv::Mat display = frame->clone();
+            cv::Mat display = bgr;
             draw_hand_tracking(display, result);
             if (decision) {
                 draw_capture_guides(display, *decision, runtime.config.capture_gate);

@@ -28,6 +28,8 @@ struct QtDashboardOptions {
     int crop_y = 0;
     int crop_width = 0;
     int crop_height = 0;
+    /// 跳帧检测：每 N 帧做一次推理，其余帧复用上一次结果。0/1 表示每帧都检测。
+    int detection_skip_frames = 1;
 };
 
 class QtDashboard {

@@ -64,6 +64,12 @@ DemoArgs parse_demo_args(int argc, char** argv) {
             args.log_level = next();
         } else if (key == "--max-frames") {
             args.max_frames = parse_int_argument(next(), key);
+        } else if (key == "--detection-interval") {
+            // 跳帧检测：每 N 帧做一次推理（0/1 = 每帧检测，10 = 每 10 帧检测一次）
+            args.detection_skip_frames = parse_int_argument(next(), key);
+        } else if (key == "--loop-file") {
+            // 文件输入时循环播放（EOS 时 seek 回 0）
+            args.loop_file = true;
         } else if (key == "--landmark-backend") {
             args.landmark_backend = landmark_backend_from_string(next());
         } else if (key == "--landmarks-json") {
@@ -128,6 +134,7 @@ QtDashboardOptions demo_dashboard_options(const DemoArgs& args) {
     options.palm_model_path = args.palm_model;
     options.hand_model_path = args.hand_model;
     options.right_half = args.right_half;
+    options.detection_skip_frames = args.detection_skip_frames;
     return options;
 }
 

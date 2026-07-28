@@ -20,12 +20,16 @@ namespace double_ok_gesture {
 
 class HevcAsyncReader {
 public:
+    enum class SourceType { V4L2, FILE };
+
     HevcAsyncReader(
         const std::string& device,
         int width,
         int height,
         double fps,
-        size_t max_queue_size = 2);
+        size_t max_queue_size = 2,
+        SourceType source_type = SourceType::V4L2,
+        bool loop_file = false);
 
     ~HevcAsyncReader();
 
@@ -64,6 +68,8 @@ private:
     std::atomic<bool> running_{false};
     std::atomic<bool> stopped_{false};
     Info info_;
+    SourceType source_type_ = SourceType::V4L2;
+    bool loop_file_ = false;
 };
 
 }  // namespace double_ok_gesture
